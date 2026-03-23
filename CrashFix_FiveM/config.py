@@ -45,7 +45,11 @@ class SystemPaths:
             'CitizenFX': os.path.join(self.appdata, 'CitizenFX'),
             'RosId': os.path.join(self.appdata, 'CitizenFX', 'ros_id.dat'),
             'DigitalEntitlements': os.path.join(self.local_appdata, 'DigitalEntitlements'),
-            'CitizenFXIni': os.path.join(self.appdata, 'CitizenFX', 'CitizenFX.ini')
+            # Ruta real de CitizenFX.ini segun documentacion oficial de FiveM:
+            # %localappdata%\FiveM\FiveM.app\CitizenFX.ini
+            'CitizenFXIni': os.path.join(self.local_appdata, 'FiveM', 'FiveM.app', 'CitizenFX.ini'),
+            # Ruta legacy (algunas instalaciones antiguas)
+            'CitizenFXIniLegacy': os.path.join(self.appdata, 'CitizenFX', 'CitizenFX.ini')
         }
 
     @property

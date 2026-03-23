@@ -447,18 +447,57 @@ class DiagnosticService:
                 pass
         return {'status': 'complete' if not missing else 'incomplete', 'installed': installed, 'missing': missing, 'recommendations': ['Instala Visual C++ 2015-2022 Redistributable'] if missing else []}
 
-    def get_citizenfx_config(self) -> Dict[str, str]:
-        config = {'UpdateChannel': 'production', 'GameBuild': '', 'DisableNVSP': '0'}
+    def get_citizenfx_config(self) -> Dict[str, Any]:
+        """Lee la configuracion de CitizenFX.ini.
+
+        Busca el archivo en la ruta oficial (%localappdata%/FiveM/FiveM.app/)
+        y como fallback en la ruta legacy (%appdata%/CitizenFX/).
+
+        Formato real del archivo (segun docs.fivem.net):
+            [Game]
+            IVPath=C:\\...
+            SavedBuildNumber=1604
+            UpdateChannel=production
+            DisableNVSP=0
+            EnableFullMemoryDump=0
+        """
+        config = {
+            'IVPath': '',
+            'SavedBuildNumber': '',
+            'UpdateChannel': 'production',
+            'DisableNVSP': '0',
+            'EnableFullMemoryDump': '0',
+            'DisableOSVersionCheck': '0',
+            'DisableCrashUpload': '0'
+        }
+
+        # Buscar archivo en ruta principal y legacy
         ini_path = self.paths.fivem_paths.get('CitizenFXIni', '')
-        if os.path.exists(ini_path):
+        ini_path_legacy = self.paths.fivem_paths.get('CitizenFXIniLegacy', '')
+
+        actual_path = None
+        if ini_path and os.path.exists(ini_path):
+            actual_path = ini_path
+        elif ini_path_legacy and os.path.exists(ini_path_legacy):
+            actual_path = ini_path_legacy
+
+        if actual_path:
             try:
-                with open(ini_path, 'r', encoding='utf-8') as f:
+                with open(actual_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
+                        # Ignorar secciones [Game] y comentarios
+                        if not line or line.startswith('[') or line.startswith(';') or line.startswith('#'):
+                            continue
                         if '=' in line:
                             key, value = line.split('=', 1)
-                            if key.strip() in config:
-                                config[key.strip()] = value.strip()
+                            key = key.strip()
+                            value = value.strip()
+                            if key in config:
+                                config[key] = value
             except (IOError, OSError) as e:
                 logger.warning(f"Error reading CitizenFX.ini: {e}")
+
+        config['_path'] = actual_path or ini_path
+        config['_exists'] = actual_path is not None
         return config

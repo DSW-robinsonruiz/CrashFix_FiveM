@@ -927,21 +927,78 @@ def api_config_citizenfx_get():
 @app.route('/api/config/citizenfx', methods=['POST'])
 @api_error_handler
 def api_config_citizenfx_post():
-    """Guarda la configuracion de CitizenFX.ini."""
+    """Guarda la configuracion de CitizenFX.ini.
+
+    Formato correcto segun docs.fivem.net:
+        [Game]
+        IVPath=...
+        SavedBuildNumber=...
+        UpdateChannel=...
+    
+    Preserva IVPath existente y solo modifica las claves enviadas.
+    """
     diag_session = get_current_session()
     data = request.get_json() or {}
-    ini_path = system_paths.fivem_paths.get('CitizenFXIni', '')
+
+    # Leer configuracion actual para preservar IVPath y otras claves
+    diag = DiagnosticService(svc_cfg)
+    current_config = diag.get_citizenfx_config()
+
+    # Determinar ruta del archivo (usar la existente o la principal)
+    ini_path = current_config.get('_path', '') or system_paths.fivem_paths.get('CitizenFXIni', '')
 
     if not ini_path:
         return jsonify({'success': False, 'error': 'Ruta de CitizenFX.ini no configurada'})
 
+    # Mapear claves del frontend a claves reales de CitizenFX.ini
+    key_mapping = {
+        'GameBuild': 'SavedBuildNumber',       # Frontend usa GameBuild, archivo usa SavedBuildNumber
+        'SavedBuildNumber': 'SavedBuildNumber',
+        'UpdateChannel': 'UpdateChannel',
+        'DisableNVSP': 'DisableNVSP',
+        'EnableFullMemoryDump': 'EnableFullMemoryDump',
+        'DisableOSVersionCheck': 'DisableOSVersionCheck',
+        'DisableCrashUpload': 'DisableCrashUpload'
+    }
+
+    # Construir configuracion final: base actual + cambios del usuario
+    final_config = {}
+
+    # Preservar IVPath si existe
+    if current_config.get('IVPath'):
+        final_config['IVPath'] = current_config['IVPath']
+
+    # Aplicar valores actuales como base
+    for key in ['SavedBuildNumber', 'UpdateChannel', 'DisableNVSP',
+                 'EnableFullMemoryDump', 'DisableOSVersionCheck', 'DisableCrashUpload']:
+        if current_config.get(key):
+            final_config[key] = current_config[key]
+
+    # Aplicar cambios del usuario (con mapeo de claves)
+    for frontend_key, value in data.items():
+        if frontend_key.startswith('_'):
+            continue  # Ignorar claves internas
+        real_key = key_mapping.get(frontend_key, frontend_key)
+        final_config[real_key] = str(value)
+
+    # Hacer backup del archivo actual si existe
+    if os.path.exists(ini_path):
+        try:
+            from src.utils.file_utils import backup_item
+            backup_item(ini_path, 'CitizenFX.ini', system_paths.backup_folder, 'Config')
+        except Exception as e:
+            logger.warning(f"Error backing up CitizenFX.ini: {e}")
+
     ensure_directory_exists(os.path.dirname(ini_path))
     try:
         with open(ini_path, 'w', encoding='utf-8') as f:
-            for key, value in data.items():
-                f.write(f'{key}={value}\n')
+            f.write('[Game]\n')
+            for key, value in final_config.items():
+                if value:  # No escribir claves vacias
+                    f.write(f'{key}={value}\n')
         diag_session.report.add_repair_applied('CitizenFX.ini configurado')
-        return jsonify({'success': True, 'path': ini_path})
+        logger.info(f"CitizenFX.ini saved to {ini_path} with keys: {list(final_config.keys())}")
+        return jsonify({'success': True, 'path': ini_path, 'config': final_config})
     except Exception as e:
         logger.error(f"Error writing CitizenFX.ini: {e}")
         return jsonify({'success': False, 'error': str(e)})

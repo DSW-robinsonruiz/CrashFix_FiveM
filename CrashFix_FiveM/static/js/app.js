@@ -1080,7 +1080,39 @@ function showProfilesModal() {
     document.getElementById('profiles-modal').classList.add('active');
 }
 
-function showCitizenFXModal() {
+async function showCitizenFXModal() {
+    // Cargar configuracion actual del archivo antes de mostrar el modal
+    const config = await apiCall('config/citizenfx', 'GET');
+    if (config) {
+        // UpdateChannel
+        const channelSelect = document.getElementById('update-channel');
+        if (channelSelect && config.UpdateChannel) {
+            channelSelect.value = config.UpdateChannel;
+        }
+        // SavedBuildNumber (el archivo usa SavedBuildNumber, no GameBuild)
+        const buildSelect = document.getElementById('game-build');
+        if (buildSelect) {
+            const buildValue = config.SavedBuildNumber || config.GameBuild || '';
+            // Verificar si el valor existe como opcion, si no, seleccionar vacio
+            const optionExists = Array.from(buildSelect.options).some(opt => opt.value === buildValue);
+            buildSelect.value = optionExists ? buildValue : '';
+        }
+        // DisableNVSP
+        const nvspCheck = document.getElementById('disable-nvsp');
+        if (nvspCheck) {
+            nvspCheck.checked = config.DisableNVSP === '1';
+        }
+        // EnableFullMemoryDump
+        const dumpsCheck = document.getElementById('enable-dumps');
+        if (dumpsCheck) {
+            dumpsCheck.checked = config.EnableFullMemoryDump === '1';
+        }
+
+        // Mostrar ruta del archivo y estado
+        const pathInfo = config._path || 'No encontrado';
+        const existsText = config._exists ? '' : ' (se creara al guardar)';
+        addConsoleLine(`CitizenFX.ini: ${pathInfo}${existsText}`, 'info');
+    }
     document.getElementById('citizenfx-modal').classList.add('active');
 }
 
@@ -1174,12 +1206,23 @@ async function saveCitizenFXConfig() {
         EnableFullMemoryDump: document.getElementById('enable-dumps').checked ? '1' : '0'
     };
     closeModal('citizenfx-modal');
-    showLoading('Guardando configuracion...');
+    showLoading('Guardando configuracion CitizenFX.ini...');
+    addConsoleLine('Guardando configuracion CitizenFX.ini...', 'info');
     const result = await apiCall('config/citizenfx', 'POST', settings);
     if (result && result.success) {
-        addConsoleLine('&check; Configuracion de CitizenFX.ini guardada', 'success');
+        addConsoleLine(`&check; CitizenFX.ini guardado en: ${result.path}`, 'success');
+        if (result.config) {
+            const keys = Object.keys(result.config);
+            addConsoleLine(`Claves configuradas: ${keys.join(', ')}`, 'info');
+        }
+        if (settings.GameBuild) {
+            addConsoleLine(`Build del juego: ${settings.GameBuild}`, 'info');
+        }
+        addConsoleLine(`Canal: ${settings.UpdateChannel} | NVSP: ${settings.DisableNVSP === '1' ? 'Desactivado' : 'Activado'} | Dumps: ${settings.EnableFullMemoryDump === '1' ? 'Si' : 'No'}`, 'info');
         repairs.push('CitizenFX.ini configurado');
         updateCounters(); updateRepairsList();
+    } else {
+        addConsoleLine(`Error al guardar CitizenFX.ini: ${result ? result.error : 'Sin respuesta'}`, 'error');
     }
     hideLoading();
 }
