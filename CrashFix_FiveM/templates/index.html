@@ -23,21 +23,28 @@
 
             <nav class="sidebar-nav">
                 <div class="nav-section">
-                    <span class="nav-section-title">ACCIONES RÁPIDAS</span>
-                    <button class="nav-btn accent" onclick="runQuickRepair()">
-                        <span class="btn-icon">⚡</span><span>Reparación Rápida</span>
-                    </button>
-                    <button class="nav-btn success" onclick="runCompleteDiagnostic()">
-                        <span class="btn-icon">🔍</span><span>Diagnóstico Completo</span>
-                    </button>
-                    <button class="nav-btn" onclick="runFullDiagnosticV2()" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;">
-                        <span class="btn-icon">🚀</span><span>Diagnóstico PRO v2</span>
-                    </button>
-                    <button class="nav-btn warning" onclick="runDiagnoseAndRepair()">
-                        <span class="btn-icon">🔧</span><span>Diagnóstico + Reparar</span>
+                    <span class="nav-section-title">ACCION PRINCIPAL</span>
+                    <button class="nav-btn" onclick="runSmartDiagnosis()" style="background:linear-gradient(135deg,#7c3aed,#e94560);color:#fff;padding:12px;font-size:0.9rem;font-weight:600;">
+                        <span class="btn-icon" style="font-size:1.2rem;">⚡</span><span>Diagnostico Inteligente</span>
                     </button>
                     <button class="nav-btn" onclick="showAdvancedRepairModal()" style="background:#7c3aed;color:#fff;">
-                        <span class="btn-icon">🛠️</span><span>Reparación Avanzada</span>
+                        <span class="btn-icon">🛠️</span><span>Reparacion Avanzada</span>
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <span class="nav-section-title">ACCIONES INDIVIDUALES</span>
+                    <button class="nav-btn accent" onclick="runQuickRepair()">
+                        <span class="btn-icon">⚡</span><span>Reparacion Rapida</span>
+                    </button>
+                    <button class="nav-btn success" onclick="runCompleteDiagnostic()">
+                        <span class="btn-icon">🔍</span><span>Diagnostico Completo</span>
+                    </button>
+                    <button class="nav-btn" onclick="runFullDiagnosticV2()" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;">
+                        <span class="btn-icon">🚀</span><span>Diagnostico PRO v2</span>
+                    </button>
+                    <button class="nav-btn warning" onclick="runDiagnoseAndRepair()">
+                        <span class="btn-icon">🔧</span><span>Diagnostico + Reparar</span>
                     </button>
                 </div>
 
@@ -178,6 +185,7 @@
                     </div>
                     <div class="info-grid">
                         <div class="info-item"><span class="info-label">Estado</span><span class="info-value" id="status-value">Esperando...</span></div>
+                        <div class="info-item"><span class="info-label">Sistema Operativo</span><span class="info-value" id="os-info">--</span></div>
                         <div class="info-item"><span class="info-label">GTA V</span><span class="info-value" id="gta-status">No verificado</span></div>
                         <div class="info-item"><span class="info-label">FiveM</span><span class="info-value" id="fivem-status">No verificado</span></div>
                         <div class="info-item"><span class="info-label">GPU</span><span class="info-value" id="gpu-info">--</span></div>

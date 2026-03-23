@@ -1,4 +1,5 @@
-// FiveM Diagnostic Tool v6.1 PRO - JavaScript
+// FiveM Diagnostic Tool v6.2 PRO - JavaScript
+// Optimizado: Diagnostico Inteligente unificado + Info Sistema corregida
 
 // ============= ESTADO GLOBAL =============
 
@@ -74,6 +75,90 @@ function updateRecommendations() {
     }
 }
 
+/**
+ * Actualiza la tarjeta de Informacion del Sistema con los datos proporcionados.
+ * Centraliza la logica de renderizado para evitar duplicacion.
+ */
+function updateSystemInfoCard(data) {
+    if (!data) return;
+
+    // GPU
+    const gpuData = data.gpu || (data.Hardware && data.Hardware.GPU);
+    if (gpuData && Array.isArray(gpuData) && gpuData.length > 0) {
+        const gpu = gpuData[0];
+        const gpuText = gpu.VRAM_GB > 0
+            ? `${gpu.Name} (${gpu.VRAM_GB}GB)`
+            : gpu.Name;
+        document.getElementById('gpu-info').textContent = gpuText;
+    }
+
+    // RAM
+    const ramData = data.ram || (data.Hardware && data.Hardware.RAM);
+    if (ramData && ramData.TotalGB !== undefined) {
+        const usedText = ramData.UsedPercent !== undefined ? ` (${ramData.UsedPercent}% usado)` : '';
+        document.getElementById('ram-info').textContent = `${ramData.TotalGB} GB${usedText}`;
+    }
+
+    // CPU
+    const cpuData = data.cpu || (data.Hardware && data.Hardware.CPU);
+    if (cpuData && cpuData.Name) {
+        const coresText = cpuData.Cores ? ` (${cpuData.Cores}C/${cpuData.Threads}T)` : '';
+        document.getElementById('cpu-info').textContent = cpuData.Name + coresText;
+    }
+
+    // Sistema Operativo
+    const osData = data.os || (data.Hardware && data.Hardware.os);
+    if (osData && osData.Name) {
+        const archText = osData.Architecture ? ` ${osData.Architecture}` : '';
+        document.getElementById('os-info').textContent = osData.Name + archText;
+    }
+
+    // GTA V
+    const gtaData = data.gta || data.GTA;
+    if (gtaData) {
+        const gtaEl = document.getElementById('gta-status');
+        if (gtaData.Path) {
+            gtaEl.textContent = 'Encontrado';
+            gtaEl.style.color = 'var(--success)';
+        } else {
+            gtaEl.textContent = 'No encontrado';
+            gtaEl.style.color = 'var(--error)';
+        }
+    }
+
+    // FiveM
+    const fivemData = data.fivem;
+    if (fivemData) {
+        const fivemEl = document.getElementById('fivem-status');
+        if (fivemData.Found) {
+            fivemEl.textContent = 'Instalado';
+            fivemEl.style.color = 'var(--success)';
+        } else {
+            fivemEl.textContent = 'No encontrado';
+            fivemEl.style.color = 'var(--warning)';
+        }
+    }
+
+    // Red
+    const netData = data.network;
+    if (netData) {
+        const netEl = document.getElementById('network-status');
+        netEl.textContent = `${netData.Status} (${netData.Ping}ms)`;
+    }
+
+    // DirectX
+    if (data.directx) {
+        const dxEl = document.getElementById('directx-status');
+        dxEl.textContent = data.directx.feature_level || data.directx.version || 'Desconocido';
+    }
+
+    // VC++ Redist
+    if (data.vcredist) {
+        const vcEl = document.getElementById('vcredist-status');
+        vcEl.textContent = data.vcredist.status === 'complete' ? 'OK' : 'Incompleto';
+    }
+}
+
 // ============= API =============
 
 async function apiCall(endpoint, method = 'POST', data = null) {
@@ -101,25 +186,8 @@ async function apiCall(endpoint, method = 'POST', data = null) {
 function processResults(result) {
     if (!result) return;
 
-    // GPU — puede venir como result.gpu (array) o result.Hardware.GPU
-    const gpuData = result.gpu || (result.Hardware && result.Hardware.GPU);
-    if (gpuData && Array.isArray(gpuData) && gpuData.length > 0) {
-        document.getElementById('gpu-info').textContent =
-            `${gpuData[0].Name} (${gpuData[0].VRAM_GB}GB)`;
-    }
-
-    // RAM
-    const ramData = result.ram || (result.Hardware && result.Hardware.RAM);
-    if (ramData && ramData.TotalGB !== undefined) {
-        document.getElementById('ram-info').textContent =
-            `${ramData.TotalGB} GB (${ramData.UsedPercent}% usado)`;
-    }
-
-    // CPU
-    const cpuData = result.cpu || (result.Hardware && result.Hardware.CPU);
-    if (cpuData && cpuData.Name) {
-        document.getElementById('cpu-info').textContent = cpuData.Name;
-    }
+    // Actualizar tarjeta de info del sistema
+    updateSystemInfoCard(result);
 
     // Summary — puede venir como result.summary o result.Summary
     const summary = result.summary || result.Summary;
@@ -142,7 +210,53 @@ function processResults(result) {
     updateRecommendations();
 }
 
-// ============= ACCIONES RAPIDAS =============
+// ============= DIAGNOSTICO INTELIGENTE (UNIFICADO) =============
+
+async function runSmartDiagnosis() {
+    showLoading('Ejecutando Diagnostico Inteligente...');
+    addConsoleLine('Iniciando Diagnostico Inteligente (analisis + reparacion automatica)...', 'info');
+    resetDiagnosticState();
+
+    const result = await apiCall('smart/diagnose-and-fix');
+    if (result) {
+        // Mostrar fases en consola
+        (result.phases || []).forEach(phase => {
+            const icon = phase.status === 'completed' ? '&check;' : '&cross;';
+            addConsoleLine(`${icon} [${phase.name}] ${phase.status}`, phase.status === 'completed' ? 'success' : 'warn');
+        });
+
+        // Procesar resultados (actualiza tarjeta de info, contadores, etc.)
+        processResults(result);
+
+        // Mostrar reparaciones automaticas aplicadas
+        const autoRepairs = result.auto_repairs || [];
+        if (autoRepairs.length > 0) {
+            addConsoleLine('--- Reparaciones automaticas ---', 'info');
+            autoRepairs.forEach(ar => {
+                addConsoleLine(`  &check; ${ar.action} (${ar.reason})`, 'success');
+                if (!repairs.includes(ar.action)) repairs.push(ar.action);
+            });
+        }
+
+        // Mostrar requisitos
+        if (result.requirements && result.requirements.checks) {
+            addConsoleLine('--- Requisitos del sistema ---', 'info');
+            Object.entries(result.requirements.checks).forEach(([key, check]) => {
+                const icon = check.passed ? '&check;' : '&cross;';
+                addConsoleLine(`  ${icon} ${key}: ${check.current} (req: ${check.required})`,
+                    check.passed ? 'success' : 'warn');
+            });
+        }
+
+        updateCounters();
+        updateRepairsList();
+        updateRecommendations();
+        addConsoleLine('&check; Diagnostico Inteligente completado', 'success');
+    }
+    hideLoading();
+}
+
+// ============= ACCIONES RAPIDAS (ORIGINALES - MANTENIDAS) =============
 
 async function runQuickRepair() {
     showLoading('Ejecutando reparacion rapida...');
@@ -225,15 +339,23 @@ async function checkRequirements() {
     const result = await apiCall('detect/requirements');
     if (result) {
         addConsoleLine(`Estado: ${result.status}`, result.status === 'ok' ? 'success' : 'warn');
+
+        // Mostrar checks en consola
         Object.entries(result.checks || {}).forEach(([key, check]) => {
             const icon = check.passed ? '&check;' : '&cross;';
             addConsoleLine(`  ${icon} ${key}: ${check.current} (req: ${check.required})`,
                 check.passed ? 'success' : 'error');
             if (!check.passed) criticalIssues.push(`${key}: ${check.current}`);
         });
+
+        // Actualizar tarjeta de informacion del sistema con datos de hardware
+        updateSystemInfoCard(result);
+
+        // Recomendaciones
         (result.recommendations || []).forEach(r => {
             if (!recommendations.includes(r)) recommendations.push(r);
         });
+
         updateCounters();
         updateRecommendations();
     }
@@ -253,6 +375,15 @@ async function detectGTA() {
         const gtaEl = document.getElementById('gta-status');
         if (gtaResult.Path) {
             addConsoleLine(`&check; GTA V encontrado: ${gtaResult.Path}`, 'success');
+            if (gtaResult.Platform) {
+                addConsoleLine(`  Plataforma: ${gtaResult.Platform}`, 'info');
+            }
+            if (gtaResult.AllPaths && gtaResult.AllPaths.length > 1) {
+                addConsoleLine(`  Instalaciones encontradas: ${gtaResult.AllPaths.length}`, 'info');
+                gtaResult.AllPaths.forEach(p => {
+                    addConsoleLine(`    - ${p.path} (${p.platform})`, 'info');
+                });
+            }
             gtaEl.textContent = 'Encontrado';
             gtaEl.style.color = 'var(--success)';
         } else {
@@ -343,7 +474,8 @@ async function analyzeCPU() {
     const result = await apiCall('detect/cpu');
     if (result) {
         addConsoleLine(`CPU: ${result.Name} | Nucleos: ${result.Cores} | Hilos: ${result.Threads}`, 'info');
-        document.getElementById('cpu-info').textContent = result.Name;
+        const coresText = result.Cores ? ` (${result.Cores}C/${result.Threads}T)` : '';
+        document.getElementById('cpu-info').textContent = result.Name + coresText;
     }
     hideLoading();
 }
@@ -611,6 +743,11 @@ async function clearCacheComplete() {
     const result = await apiCall('repair/cache/complete');
     if (result) {
         addConsoleLine(`&check; Cache completa limpiada: ${result.cleaned_mb || 0} MB`, 'success');
+        if (result.details && result.details.length > 0) {
+            result.details.forEach(d => {
+                addConsoleLine(`  ${d.folder}: ${d.size_mb} MB`, 'info');
+            });
+        }
         repairs.push('Cache completa limpiada');
         updateCounters(); updateRepairsList();
     }

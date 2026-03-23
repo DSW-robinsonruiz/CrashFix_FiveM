@@ -262,6 +262,10 @@ def api_diagnostic_complete():
     result['gpu'] = gpu_info
     result['ram'] = ram_info
     result['cpu'] = cpu_info
+    result['os'] = hw.get_os_info()
+    result['gta'] = gta_info
+    result['fivem'] = diag.get_fivem_status()
+    result['network'] = network_info
     result['summary'] = result.get('Summary', {})
     return jsonify(result)
 
@@ -338,6 +342,10 @@ def api_diagnostic_full_v2():
     result['gpu'] = hardware_info.get('gpu', [])
     result['ram'] = hardware_info.get('ram', {})
     result['cpu'] = hardware_info.get('cpu', {})
+    result['os'] = hardware_info.get('os', {})
+    result['gta'] = gta_info
+    result['fivem'] = diag.get_fivem_status()
+    result['network'] = network_info
     result['summary'] = result.get('Summary', {})
 
     return jsonify({
@@ -515,6 +523,161 @@ def api_verify_gtav():
     """Verifica la integridad de los archivos de GTA V."""
     diag = DiagnosticService(svc_cfg)
     return jsonify(diag.verify_gtav_integrity())
+
+
+# ============= DIAGNOSTICO INTELIGENTE =============
+
+@app.route('/api/smart/diagnose-and-fix', methods=['POST'])
+@api_error_handler
+def api_smart_diagnose_and_fix():
+    """
+    Diagnostico inteligente unificado: analiza el estado del sistema y
+    decide automaticamente que reparaciones aplicar.
+
+    Combina la logica de diagnostico completo + reparacion rapida +
+    diagnostico PRO v2 en un solo flujo inteligente, evitando procesos
+    duplicados o innecesarios.
+
+    Mantiene compatibilidad total: internamente reutiliza los mismos
+    servicios y metodos que las acciones individuales.
+    """
+    diag_session = get_current_session()
+    diag = DiagnosticService(svc_cfg)
+    hw = HardwareService(svc_cfg)
+    net = NetworkService(svc_cfg)
+    repair = RepairService(svc_cfg, diag_session)
+
+    phases = []
+    auto_repairs = []
+
+    # --- Fase 1: Hardware ---
+    phases.append({'name': 'Hardware', 'status': 'running'})
+    hardware_info = hw.get_all_hardware_info()
+    gpu_info = hardware_info.get('gpu', [])
+    ram_info = hardware_info.get('ram', {})
+    cpu_info = hardware_info.get('cpu', {})
+    os_info = hardware_info.get('os', {})
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 2: Requisitos ---
+    phases.append({'name': 'Requisitos', 'status': 'running'})
+    requirements = diag.check_system_requirements(hardware_info)
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 3: GTA V y FiveM ---
+    phases.append({'name': 'GTA V / FiveM', 'status': 'running'})
+    gta_info = diag.get_gtav_path()
+    fivem_info = diag.get_fivem_status()
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 4: Red ---
+    phases.append({'name': 'Red', 'status': 'running'})
+    network_info = net.test_network_quality()
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 5: Errores y Logs ---
+    phases.append({'name': 'Errores', 'status': 'running'})
+    errors_info = diag.analyze_fivem_errors()
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 6: Mods y Software ---
+    phases.append({'name': 'Mods y Software', 'status': 'running'})
+    mods_info = diag.detect_gta_mods()
+    conflicts_info = diag.detect_conflicting_software()
+    phases[-1]['status'] = 'completed'
+
+    # --- Fase 7: Verificaciones ---
+    phases.append({'name': 'Verificaciones', 'status': 'running'})
+    directx_info = diag.check_directx()
+    vcredist_info = diag.check_vcredist()
+    antivirus_info = hardware_info.get('antivirus', hw.get_antivirus_info())
+    phases[-1]['status'] = 'completed'
+
+    # --- Construir reporte ---
+    report = diag_session.report
+    report.reset_counters()
+    report.gta_info = gta_info
+    report.fivem_info = fivem_info
+    report.hardware_info = hardware_info
+    report.network_info = network_info
+    report.errors_info = errors_info
+    report.software_info = {
+        'Mods': mods_info,
+        'Conflicts': conflicts_info.get('ConflictsFound', []),
+        'Antivirus': antivirus_info.get('Installed', []) if isinstance(antivirus_info, dict) else []
+    }
+
+    # Contar problemas
+    _count_issues_from_diagnostics(
+        report, errors_info, hardware_info,
+        network_info, mods_info, conflicts_info
+    )
+
+    if not gta_info.get('Path'):
+        report.increment_critical()
+        report.add_recommendation('GTA V no encontrado. Verifica la instalacion')
+
+    for rec in requirements.get('recommendations', []):
+        report.add_recommendation(rec)
+    for rec in vcredist_info.get('recommendations', []):
+        report.add_recommendation(rec)
+    for rec in errors_info.get('Recommendations', []):
+        report.add_recommendation(rec)
+    if isinstance(antivirus_info, dict):
+        for rec in antivirus_info.get('Recommendations', []):
+            report.add_recommendation(rec)
+
+    # --- Fase 8: Reparaciones automaticas inteligentes ---
+    phases.append({'name': 'Reparacion Automatica', 'status': 'running'})
+
+    # Siempre: terminar procesos de FiveM para evitar conflictos
+    kill_result = repair.kill_fivem_processes()
+    auto_repairs.append({'action': 'Terminar procesos FiveM', 'result': kill_result, 'reason': 'Prevencion de conflictos'})
+
+    # Si hay errores criticos en logs: limpiar cache selectiva
+    critical_errors = [e for e in errors_info.get('Errors', []) if e.get('Severity') == 'critical']
+    if critical_errors:
+        cache_result = repair.clear_fivem_cache_selective()
+        auto_repairs.append({'action': 'Limpiar cache selectiva', 'result': cache_result, 'reason': f'{len(critical_errors)} errores criticos detectados'})
+
+    # Si hay DLLs conflictivas potenciales (Entry Point Not Found)
+    entry_point_errors = [e for e in errors_info.get('Errors', []) if 'Entry Point' in e.get('Error', '')]
+    if entry_point_errors:
+        dll_result = repair.remove_conflicting_dlls()
+        auto_repairs.append({'action': 'Eliminar DLLs conflictivas', 'result': dll_result, 'reason': 'Error Entry Point Not Found detectado'})
+
+    # Si hay mods detectados
+    if mods_info.get('Count', 0) > 0:
+        report.add_recommendation(f'Se detectaron {mods_info["Count"]} mods. Considera desactivarlos si tienes problemas.')
+
+    # Si hay software conflictivo
+    if conflicts_info.get('Count', 0) > 0:
+        report.add_recommendation(f'Software conflictivo detectado: {", ".join(conflicts_info.get("ConflictsFound", []))}')
+
+    phases[-1]['status'] = 'completed'
+
+    report.calculate_overall_status()
+
+    result = report.to_dict()
+    result['gpu'] = gpu_info
+    result['ram'] = ram_info
+    result['cpu'] = cpu_info
+    result['os'] = os_info
+    result['gta'] = gta_info
+    result['fivem'] = fivem_info
+    result['summary'] = result.get('Summary', {})
+
+    return jsonify({
+        **result,
+        'phases': phases,
+        'auto_repairs': auto_repairs,
+        'requirements': requirements,
+        'directx': directx_info,
+        'vcredist': vcredist_info,
+        'network': network_info,
+        'mods': mods_info,
+        'conflicts': conflicts_info
+    })
 
 
 # ============= REPARACION =============

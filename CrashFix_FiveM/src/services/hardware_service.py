@@ -128,5 +128,27 @@ class HardwareService:
         results['fivem_ready'] = score >= system_requirements.min_benchmark_score
         return results
 
+    def get_os_info(self) -> Dict[str, Any]:
+        """Obtiene informacion del sistema operativo."""
+        from src.utils.system_utils import get_system_info
+        sys_info = get_system_info()
+        os_name = f"{sys_info.get('system', 'Desconocido')} {sys_info.get('release', '')}".strip()
+        os_version = sys_info.get('version', 'N/A')
+        os_arch = sys_info.get('machine', 'N/A')
+        return {
+            'Name': os_name,
+            'Version': os_version,
+            'Architecture': os_arch,
+            'Processor': sys_info.get('processor', 'N/A')
+        }
+
     def get_all_hardware_info(self) -> Dict[str, Any]:
-        return {'gpu': self.get_gpu_info(), 'ram': self.get_ram_info(), 'cpu': self.get_cpu_info(), 'temperatures': self.get_system_temperatures(), 'antivirus': self.get_antivirus_info()}
+        """Obtiene toda la informacion de hardware y sistema operativo."""
+        return {
+            'gpu': self.get_gpu_info(),
+            'ram': self.get_ram_info(),
+            'cpu': self.get_cpu_info(),
+            'os': self.get_os_info(),
+            'temperatures': self.get_system_temperatures(),
+            'antivirus': self.get_antivirus_info()
+        }

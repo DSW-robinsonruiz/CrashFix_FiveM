@@ -104,30 +104,113 @@ class RepairService:
         }
 
     def clear_fivem_cache_complete(self) -> Dict[str, Any]:
-        """Limpia la cache completa de FiveM incluyendo crashes y logs."""
+        """Limpia la cache completa de FiveM incluyendo crashes y logs.
+
+        Optimizaciones respecto a la version anterior:
+        - Backup selectivo: solo respalda archivos de configuracion criticos
+          (CitizenFX.ini, ros_id.dat) en lugar de todo FiveM.app
+        - Calculo de tamano en paralelo con ThreadPoolExecutor
+        - Eliminacion en paralelo de carpetas independientes
+        - Verificacion de existencia antes de operar
+        - Reporte detallado por carpeta
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         self.kill_fivem_processes()
         fivem_app = self.paths.fivem_paths.get('FiveMApp', '')
-        backup_item(fivem_app, 'FiveM_Complete', self.paths.backup_folder, 'Cache')
 
+        # Backup selectivo: solo archivos de configuracion criticos
+        # (en lugar de copiar todo FiveM.app que puede ser de varios GB)
+        critical_files = [
+            self.paths.fivem_paths.get('CitizenFXIni', ''),
+            self.paths.fivem_paths.get('RosId', ''),
+        ]
+        for crit_file in critical_files:
+            if crit_file and os.path.exists(crit_file):
+                try:
+                    backup_item(
+                        crit_file,
+                        os.path.basename(crit_file),
+                        self.paths.backup_folder,
+                        'Config'
+                    )
+                except Exception as e:
+                    logger.warning(f"Error backing up {crit_file}: {e}")
+
+        # Definir carpetas a limpiar
         folders_to_clean = [
             self.paths.fivem_paths.get('Cache', ''),
             os.path.join(fivem_app, 'crashes'),
             os.path.join(fivem_app, 'logs'),
-            os.path.join(fivem_app, 'server-cache')
+            os.path.join(fivem_app, 'server-cache'),
         ]
 
-        size_freed = 0
-        for folder in folders_to_clean:
-            if os.path.exists(folder):
-                try:
-                    size_freed += get_folder_size(folder)
-                    safe_remove_directory(folder)
-                except Exception as e:
-                    logger.warning(f"Error limpiando {folder}: {e}")
+        # Filtrar solo carpetas que existen (evitar trabajo innecesario)
+        existing_folders = [
+            f for f in folders_to_clean
+            if f and os.path.isdir(f)
+        ]
 
-        size_mb = round(size_freed / (1024 * 1024), 2)
-        self._record_repair(True, f'Cache completa limpiada ({size_mb} MB)')
-        return {'success': True, 'cleaned_mb': size_mb}
+        if not existing_folders:
+            return {
+                'success': True,
+                'cleaned_mb': 0,
+                'details': [],
+                'message': 'No se encontraron carpetas de cache para limpiar'
+            }
+
+        # Fase 1: Calcular tamanos en paralelo
+        folder_sizes = {}
+
+        def _get_size(folder):
+            return (folder, get_folder_size(folder))
+
+        with ThreadPoolExecutor(max_workers=min(4, len(existing_folders))) as executor:
+            futures = {executor.submit(_get_size, f): f for f in existing_folders}
+            for future in as_completed(futures):
+                try:
+                    folder, size = future.result()
+                    folder_sizes[folder] = size
+                except Exception as e:
+                    folder = futures[future]
+                    folder_sizes[folder] = 0
+                    logger.warning(f"Error calculando tamano de {folder}: {e}")
+
+        # Fase 2: Eliminar carpetas en paralelo
+        details = []
+
+        def _clean_folder(folder):
+            size = folder_sizes.get(folder, 0)
+            size_mb = round(size / (1024 * 1024), 2)
+            folder_name = os.path.basename(folder)
+            try:
+                if safe_remove_directory(folder):
+                    return {'folder': folder_name, 'size_mb': size_mb, 'status': 'cleaned'}
+                else:
+                    return {'folder': folder_name, 'size_mb': size_mb, 'status': 'error'}
+            except Exception as e:
+                logger.warning(f"Error limpiando {folder}: {e}")
+                return {'folder': folder_name, 'size_mb': size_mb, 'status': 'error', 'error': str(e)}
+
+        with ThreadPoolExecutor(max_workers=min(4, len(existing_folders))) as executor:
+            futures = {executor.submit(_clean_folder, f): f for f in existing_folders}
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    details.append(result)
+                except Exception as e:
+                    folder = futures[future]
+                    details.append({'folder': os.path.basename(folder), 'size_mb': 0, 'status': 'error', 'error': str(e)})
+
+        total_freed = sum(folder_sizes.values())
+        total_mb = round(total_freed / (1024 * 1024), 2)
+        self._record_repair(True, f'Cache completa limpiada ({total_mb} MB)')
+
+        return {
+            'success': True,
+            'cleaned_mb': total_mb,
+            'details': details
+        }
 
     # ============= DLLs =============
 
