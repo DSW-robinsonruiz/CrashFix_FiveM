@@ -270,6 +270,49 @@ class RepairService:
             'errors': errors if errors else None
         }
 
+    def auto_repair_all(self) -> Dict[str, Any]:
+        """Ejecuta un sistema de reparación inteligente basado en prioridades y errores detectados."""
+        report = self.session.report
+        results = []
+        
+        # 1. Prioridad Crítica: Procesos bloqueantes
+        self.kill_fivem_processes()
+        
+        # 2. Prioridad Alta: Errores específicos detectados en logs
+        errors = report.errors_info.get('Errors', [])
+        critical_errors = [e for e in errors if e.get('Severity') == 'critical']
+        
+        if critical_errors:
+            # Si hay errores de GPU/DirectX, limpiar cache completa es prioridad
+            if any('GFX' in e['Error'] or 'D3D' in e['Error'] for e in critical_errors):
+                results.append(self.clear_fivem_cache_complete())
+            
+            # Si hay errores de DLLs, eliminarlas
+            if any('v8' in e['Error'] or 'Entry Point' in e['Error'] for e in critical_errors):
+                results.append(self.remove_v8_dlls())
+
+        # 3. Prioridad Media: Problemas de autenticación (si hay advertencias de ROS)
+        if report.warnings > 0:
+            results.append(self.repair_ros_authentication())
+
+        # 4. Mantenimiento General: Cache selectiva (siempre seguro)
+        if not any(r.get('success') and 'Cache completa' in r.get('message', '') for r in results):
+            results.append(self.clear_fivem_cache_selective())
+
+        # 5. Verificación final de integridad
+        results.append(self.verify_and_repair_gta_files())
+
+        success_count = sum(1 for r in results if r.get('success'))
+        message = f"Reparación automática completada: {success_count}/{len(results)} acciones exitosas."
+        self.session.add_action('auto_repair', message, status='success' if success_count > 0 else 'warning')
+        
+        return {
+            'success': True,
+            'message': message,
+            'actions_performed': len(results),
+            'details': results
+        }
+
     def reset_fivem_configurations(self) -> Dict[str, Any]:
         """Restablece las configuraciones clave de FiveM (CitizenFX.ini, ros_id.dat)."""
         config_files = [

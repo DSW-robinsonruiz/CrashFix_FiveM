@@ -293,6 +293,16 @@ def api_repair_reset_fivem_config():
     return jsonify(result)
 
 
+@app.route("/api/repair/all", methods=["POST"])
+@api_error_handler
+def api_repair_all():
+    """Ejecuta la reparación automática completa basada en prioridades."""
+    diag_session = get_current_session()
+    repair_service = RepairService(svc_cfg, diag_session)
+    result = repair_service.auto_repair_all()
+    return jsonify(result)
+
+
 @app.route("/api/diagnostic/full/v2", methods=["POST"])
 @api_error_handler
 def api_diagnostic_full_v2():
