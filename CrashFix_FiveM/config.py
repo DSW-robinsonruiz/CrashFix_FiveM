@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 # ============= VERSIÓN Y METADATOS =============
-SCRIPT_VERSION = "6.1.0-PRO"
+SCRIPT_VERSION = "7.0.0-PRO"
 SCRIPT_NAME = "FiveM Diagnostic & AUTO-REPAIR Tool"
 
 # ============= CONFIGURACIÓN DEL SERVIDOR =============
@@ -45,10 +45,7 @@ class SystemPaths:
             'CitizenFX': os.path.join(self.appdata, 'CitizenFX'),
             'RosId': os.path.join(self.appdata, 'CitizenFX', 'ros_id.dat'),
             'DigitalEntitlements': os.path.join(self.local_appdata, 'DigitalEntitlements'),
-            # Ruta real de CitizenFX.ini segun documentacion oficial de FiveM:
-            # %localappdata%\FiveM\FiveM.app\CitizenFX.ini
             'CitizenFXIni': os.path.join(self.local_appdata, 'FiveM', 'FiveM.app', 'CitizenFX.ini'),
-            # Ruta legacy (algunas instalaciones antiguas)
             'CitizenFXIniLegacy': os.path.join(self.appdata, 'CitizenFX', 'CitizenFX.ini')
         }
 
@@ -88,39 +85,90 @@ class DiagnosticConfig:
         'Xbox Game Bar': 'GameBar.exe'
     })
 
-# ============= PATRONES DE ERROR =============
+# ============= PATRONES DE ERROR Y FIRMAS DE CRASH =============
 @dataclass
 class ErrorPatterns:
     patterns: Dict[str, Dict[str, str]] = field(default_factory=lambda: {
+        # --- Errores de Gráficos ---
         'ERR_GFX_D3D_INIT': {
             'severity': 'critical',
-            'description': 'Error de inicialización de DirectX',
-            'solution': 'Actualiza los drivers de tu GPU'
-        },
-        'ERR_MEM_MULTIALLOC_FREE': {
-            'severity': 'critical',
-            'description': 'Error de gestión de memoria',
-            'solution': 'Aumenta la memoria virtual del sistema'
-        },
-        'ERR_GEN_INVALID': {
-            'severity': 'high',
-            'description': 'Error genérico de validación',
-            'solution': 'Verifica la integridad de los archivos del juego'
-        },
-        'Entry Point Not Found': {
-            'severity': 'critical',
-            'description': 'DLL conflictiva en System32',
-            'solution': 'Elimina v8.dll de la carpeta System32'
+            'category': 'GPU',
+            'description': 'Error de inicialización de DirectX. El juego no puede comunicarse con la GPU.',
+            'solution': 'Actualiza los drivers de tu GPU y verifica la versión de DirectX instalada.'
         },
         'ERR_GFX_STATE': {
             'severity': 'high',
-            'description': 'Error de estado gráfico',
-            'solution': 'Reinicia el juego y verifica drivers'
+            'category': 'GPU',
+            'description': 'Error de estado gráfico. Los datos de la GPU están corruptos o son inconsistentes.',
+            'solution': 'Reinicia el juego, verifica drivers y considera reducir los ajustes gráficos.'
         },
+        'ERR_GFX_D3D_SWAPCHAIN_WAIT': {
+            'severity': 'high',
+            'category': 'GPU',
+            'description': 'Tiempo de espera agotado en la cadena de intercambio de DirectX.',
+            'solution': 'Desactiva overlays (Discord, Steam) y verifica la estabilidad del driver de video.'
+        },
+        
+        # --- Errores de Memoria ---
+        'ERR_MEM_MULTIALLOC_FREE': {
+            'severity': 'critical',
+            'category': 'RAM',
+            'description': 'Error de gestión de memoria (doble liberación o corrupción).',
+            'solution': 'Aumenta la memoria virtual del sistema y verifica la integridad de tu memoria RAM.'
+        },
+        'ERR_MEM_VIRTUAL_OUT': {
+            'severity': 'critical',
+            'category': 'RAM',
+            'description': 'El sistema se ha quedado sin memoria virtual.',
+            'solution': 'Aumenta el tamaño del archivo de paginación en Windows.'
+        },
+
+        # --- Errores de Red ---
         'ERR_NET_TIMEOUT': {
             'severity': 'medium',
-            'description': 'Timeout de conexión',
-            'solution': 'Verifica tu conexión a internet'
+            'category': 'Red',
+            'description': 'La conexión con el servidor ha expirado.',
+            'solution': 'Verifica tu conexión a internet, reinicia el router y usa una conexión por cable si es posible.'
+        },
+        'CURL error 28': {
+            'severity': 'medium',
+            'category': 'Red',
+            'description': 'Tiempo de espera agotado en la solicitud de red (CURL).',
+            'solution': 'Verifica si hay firewalls bloqueando FiveM o si tu ISP tiene problemas de latencia.'
+        },
+
+        # --- Errores de Archivos/Validación ---
+        'ERR_GEN_INVALID': {
+            'severity': 'high',
+            'category': 'Archivos',
+            'description': 'Error genérico de validación de archivos del juego.',
+            'solution': 'Verifica la integridad de los archivos de GTA V en Steam/Epic/Rockstar.'
+        },
+        'Entry Point Not Found': {
+            'severity': 'critical',
+            'category': 'Sistema',
+            'description': 'DLL conflictiva detectada en la carpeta del sistema.',
+            'solution': 'Elimina v8.dll de la carpeta C:\\Windows\\System32 si existe.'
+        },
+        'Failed to load CitizenGame.dll': {
+            'severity': 'critical',
+            'category': 'FiveM',
+            'description': 'No se pudo cargar un componente crítico de FiveM.',
+            'solution': 'Reinstala FiveM o verifica que tu antivirus no esté bloqueando el archivo.'
+        },
+
+        # --- Firmas de Crash Comunes ---
+        'b2699': {
+            'severity': 'medium',
+            'category': 'Versión',
+            'description': 'Crash relacionado con la versión 2699 de GTA V.',
+            'solution': 'Asegúrate de que el servidor al que intentas entrar sea compatible con esta versión.'
+        },
+        'pool full': {
+            'severity': 'high',
+            'category': 'Recursos',
+            'description': 'El juego ha agotado un pool de recursos interno (objetos, vehículos, etc.).',
+            'solution': 'Aumenta el Extended Texture Budget en los ajustes de FiveM.'
         }
     })
 
