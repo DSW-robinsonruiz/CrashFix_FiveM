@@ -55,7 +55,32 @@ class RepairService:
 
     # ============= PROCESOS =============
 
-    def kill_fivem_processes(self) -> Dict[str, Any]:
+    def verify_and_repair_gta_files(self) -> Dict[str, Any]:
+        """Verifica la integridad de los archivos de GTA V y sugiere reparaciones."""
+        gta_info = self.session.report.gta_info
+        gta_path = gta_info.get("Path")
+
+        if not gta_path:
+            message = "No se pudo verificar la integridad de GTA V: ruta no encontrada."
+            self._record_repair(False, message)
+            return {"success": False, "message": message}
+
+        # Reutilizar la lógica de diagnóstico para verificar archivos
+        from src.services.diagnostic_service import DiagnosticService
+        diag_service = DiagnosticService(self.config)
+        integrity_check = diag_service.check_gta_integrity(gta_path)
+
+        if integrity_check["status"] == "ok":
+            message = "Integridad de archivos de GTA V verificada: OK."
+            self._record_repair(True, message)
+            return {"success": True, "message": message, "details": integrity_check}
+        else:
+            missing_files = integrity_check.get("files_missing", [])
+            message = f"Archivos de GTA V faltantes o corruptos detectados: {', '.join(missing_files)}. Se recomienda verificar la integridad del juego a través de su launcher (Steam/Epic/Rockstar)."
+            self._record_repair(False, message)
+            return {"success": False, "message": message, "details": integrity_check}
+
+    def kill_fivem_processes(self) -> Dict[str, Any>:
         """Termina todos los procesos relacionados con FiveM."""
         processes = self.diagnostic_config.fivem_processes
         results = kill_processes(processes)
@@ -245,7 +270,45 @@ class RepairService:
             'errors': errors if errors else None
         }
 
-    def remove_v8_dlls(self) -> Dict[str, Any]:
+    def reset_fivem_configurations(self) -> Dict[str, Any]:
+        """Restablece las configuraciones clave de FiveM (CitizenFX.ini, ros_id.dat)."""
+        config_files = [
+            self.paths.fivem_paths.get("CitizenFXIni", ""),
+            self.paths.fivem_paths.get("RosId", ""),
+            self.paths.fivem_paths.get("CitizenFXIniLegacy", "") # Considerar legacy también
+        ]
+        reset_count = 0
+        details = []
+
+        for file_path in config_files:
+            if file_path and os.path.exists(file_path):
+                try:
+                    # Realizar backup antes de eliminar
+                    backup_item(
+                        file_path,
+                        os.path.basename(file_path),
+                        self.paths.backup_folder,
+                        "Config"
+                    )
+                    if safe_remove_file(file_path):
+                        reset_count += 1
+                        details.append(f"Archivo de configuración {os.path.basename(file_path)} restablecido.")
+                    else:
+                        details.append(f"Fallo al restablecer {os.path.basename(file_path)}.")
+                except Exception as e:
+                    logger.error(f"Error al restablecer {file_path}: {e}")
+                    details.append(f"Error al restablecer {os.path.basename(file_path)}: {str(e)}")
+
+        if reset_count > 0:
+            message = f"Se restablecieron {reset_count} archivos de configuración de FiveM."
+            self._record_repair(True, message)
+            return {"success": True, "message": message, "details": details}
+        else:
+            message = "No se encontraron archivos de configuración de FiveM para restablecer."
+            self._record_repair(False, message)
+            return {"success": False, "message": message, "details": details}
+
+    def remove_v8_dlls(self) -> Dict[str, Any>:
         """Elimina especificamente las v8 DLLs conflictivas de System32."""
         v8_dlls = ['v8.dll', 'v8_libbase.dll', 'v8_libplatform.dll']
         system32 = os.path.join(self.paths.system_root, 'System32')

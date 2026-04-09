@@ -267,11 +267,33 @@ def api_diagnostic_complete():
     result['gta'] = gta_info
     result['fivem'] = diag.get_fivem_status()
     result['network'] = network_info
-    result['summary'] = result.get('Summary', {})
+    result["summary"] = result.get("Summary", {})
     return jsonify(result)
 
 
-@app.route('/api/diagnostic/full/v2', methods=['POST'])
+# ============= REPARACIONES =============
+
+@app.route("/api/repair/verify_gta", methods=["POST"])
+@api_error_handler
+def api_repair_verify_gta():
+    """Verifica la integridad de los archivos de GTA V y sugiere reparaciones."""
+    diag_session = get_current_session()
+    repair_service = RepairService(svc_cfg, diag_session)
+    result = repair_service.verify_and_repair_gta_files()
+    return jsonify(result)
+
+
+@app.route("/api/repair/reset_fivem_config", methods=["POST"])
+@api_error_handler
+def api_repair_reset_fivem_config():
+    """Restablece las configuraciones clave de FiveM."""
+    diag_session = get_current_session()
+    repair_service = RepairService(svc_cfg, diag_session)
+    result = repair_service.reset_fivem_configurations()
+    return jsonify(result)
+
+
+@app.route("/api/diagnostic/full/v2", methods=["POST"])
 @api_error_handler
 def api_diagnostic_full_v2():
     """Ejecuta el diagnostico PRO v2 con todas las fases."""
