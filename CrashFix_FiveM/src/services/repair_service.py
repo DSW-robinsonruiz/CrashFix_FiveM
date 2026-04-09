@@ -80,7 +80,7 @@ class RepairService:
             self._record_repair(False, message)
             return {"success": False, "message": message, "details": integrity_check}
 
-    def kill_fivem_processes(self) -> Dict[str, Any>:
+    def kill_fivem_processes(self) -> Dict[str, Any]:
         """Termina todos los procesos relacionados con FiveM."""
         processes = self.diagnostic_config.fivem_processes
         results = kill_processes(processes)
@@ -351,7 +351,7 @@ class RepairService:
             self._record_repair(False, message)
             return {"success": False, "message": message, "details": details}
 
-    def remove_v8_dlls(self) -> Dict[str, Any>:
+    def remove_v8_dlls(self) -> Dict[str, Any]:
         """Elimina especificamente las v8 DLLs conflictivas de System32."""
         v8_dlls = ['v8.dll', 'v8_libbase.dll', 'v8_libplatform.dll']
         system32 = os.path.join(self.paths.system_root, 'System32')
