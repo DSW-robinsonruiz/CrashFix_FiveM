@@ -207,6 +207,51 @@ class HardwareService:
         results['fivem_ready'] = score >= system_requirements.min_benchmark_score
         return results
 
+    def get_pc_tier(self) -> Dict[str, Any]:
+        """Clasifica la gama del PC (Baja, Media, Alta) basada en CPU, RAM y GPU."""
+        cpu = self.get_cpu_info()
+        ram = self.get_ram_info()
+        gpu = self.get_gpu_info()[0]
+        
+        ram_gb = ram.get('TotalGB', 0)
+        vram_gb = gpu.get('VRAM_GB', 0)
+        cpu_cores = cpu.get('Cores', 0)
+        
+        # Lógica de clasificación
+        if ram_gb >= 32 and vram_gb >= 8 and cpu_cores >= 8:
+            tier = "Alta"
+            desc = "PC de alto rendimiento. FiveM debería correr en Ultra."
+        elif ram_gb >= 16 and vram_gb >= 4 and cpu_cores >= 6:
+            tier = "Media"
+            desc = "PC equilibrado. FiveM debería correr bien en configuración Normal/Alta."
+        else:
+            tier = "Baja"
+            desc = "PC de entrada. Se recomienda configuración mínima y optimizaciones."
+            
+        return {
+            'tier': tier,
+            'description': desc,
+            'specs': {'ram': ram_gb, 'vram': vram_gb, 'cores': cpu_cores}
+        }
+
+    def get_resource_usage(self) -> Dict[str, Any]:
+        """Obtiene el uso actual de CPU y RAM para monitoreo básico."""
+        ram = self.get_ram_info()
+        cpu_usage = 0
+        if is_windows():
+            try:
+                # Obtener carga de CPU promedio en el último segundo
+                res = run_powershell('(Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average', timeout=5)
+                if res: cpu_usage = round(float(res.strip()), 1)
+            except: pass
+            
+        return {
+            'cpu_usage_percent': cpu_usage,
+            'ram_usage_percent': ram.get('UsedPercent', 0),
+            'ram_available_gb': ram.get('AvailableGB', 0),
+            'status': 'Crítico' if cpu_usage > 90 or ram.get('UsedPercent', 0) > 90 else 'Normal'
+        }
+
     def get_os_info(self) -> Dict[str, Any]:
         """Obtiene informacion del sistema operativo."""
         from src.utils.system_utils import get_system_info

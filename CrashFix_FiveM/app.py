@@ -267,6 +267,8 @@ def api_diagnostic_complete():
     result['gta'] = gta_info
     result['fivem'] = diag.get_fivem_status()
     result['network'] = network_info
+    result['pc_tier'] = hw.get_pc_tier()
+    result['resource_usage'] = hw.get_resource_usage()
     result["summary"] = result.get("Summary", {})
     return jsonify(result)
 
