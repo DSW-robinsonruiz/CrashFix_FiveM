@@ -559,12 +559,25 @@ class DiagnosticService:
         found = [s['name'] for s in conflicting if s['process'].lower() in processes_lower]
         return {'ConflictsFound': found, 'Count': len(found), 'Recommendations': ['Cierra el software conflictivo antes de jugar'] if found else []}
 
-    def detect_conflicting_overlays(self) -> Dict[str, Any]:
+    def detect_overlays(self) -> Dict[str, Any]:
+        """Alias para detectar overlays requerido por app.py."""
         from src.utils.system_utils import get_running_processes
         overlay_processes = self.diagnostic_config.overlay_processes
-        processes_lower = '\n'.join(get_running_processes()).lower()
-        found = [{'name': n, 'process': p, 'status': 'running'} for n, p in overlay_processes.items() if p.lower() in processes_lower]
-        return {'overlays_found': found, 'count': len(found), 'recommendations': ['Desactiva los overlays antes de jugar'] if found else []}
+        running = [p.lower() for p in get_running_processes()]
+        found = []
+        for name, process in overlay_processes.items():
+            if process.lower() in running:
+                found.append({'name': name, 'process': process, 'status': 'running'})
+        
+        return {
+            'overlays_found': found,
+            'count': len(found),
+            'recommendations': ['Desactiva los overlays (Discord, Steam, NVIDIA) si experimentas crashes'] if found else []
+        }
+
+    def detect_conflicting_overlays(self) -> Dict[str, Any]:
+        """Mantiene compatibilidad con nombres anteriores."""
+        return self.detect_overlays()
 
     def check_system_requirements(self, hardware_info: Dict) -> Dict[str, Any]:
         """Verifica los requisitos del sistema para FiveM.
@@ -693,8 +706,60 @@ class DiagnosticService:
         return []
 
     def generate_html_report(self, report) -> dict:
-        """Genera un reporte HTML."""
-        return {'success': True, 'path': 'report.html'}
+        """Genera un reporte HTML completo del diagnostico."""
+        try:
+            report_data = report.to_dict()
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_filename = f"CrashFix_Report_{timestamp}.html"
+            report_path = os.path.join(self.paths.work_folder, report_filename)
+            
+            html_content = f"""
+            <html>
+            <head>
+                <title>Reporte de Diagnóstico CrashFix FiveM</title>
+                <style>
+                    body {{ font-family: sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 20px auto; padding: 20px; }}
+                    h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; }}
+                    .section {{ margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 5px; }}
+                    .status-excellent {{ color: #27ae60; font-weight: bold; }}
+                    .status-critical {{ color: #e74c3c; font-weight: bold; }}
+                    ul {{ padding-left: 20px; }}
+                </style>
+            </head>
+            <body>
+                <h1>CrashFix FiveM - Reporte de Diagnóstico</h1>
+                <div class="section">
+                    <p><strong>Fecha:</strong> {report_data['Metadata']['Timestamp']}</p>
+                    <p><strong>Estado General:</strong> <span class="status-{report_data['Summary']['OverallStatus'].lower()}">{report_data['Summary']['OverallStatus']}</span></p>
+                </div>
+                <div class="section">
+                    <h2>Resumen</h2>
+                    <p>Problemas Críticos: {report_data['Summary']['CriticalIssues']}</p>
+                    <p>Advertencias: {report_data['Summary']['Warnings']}</p>
+                </div>
+                <div class="section">
+                    <h2>Recomendaciones</h2>
+                    <ul>
+                        {''.join([f"<li>{r}</li>" for r in report_data['Summary']['Recommendations']]) if report_data['Summary']['Recommendations'] else "<li>No hay recomendaciones</li>"}
+                    </ul>
+                </div>
+            </body>
+            </html>
+            """
+            
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+                
+            return {
+                'success': True,
+                'path': report_path,
+                'filename': report_filename,
+                'message': 'Reporte generado correctamente'
+            }
+        except Exception as e:
+            logger.error(f"Error generando reporte: {e}")
+            return {'success': False, 'error': str(e)}
 
     def analyze_crash_dumps(self) -> dict:
         """Busca y analiza archivos .dmp."""

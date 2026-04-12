@@ -808,16 +808,25 @@ class RepairService:
         from src.services.hardware_service import HardwareService
         hw = HardwareService(self.config)
         gpu_info = hw.get_gpu_info()
-        vram = gpu_info[0].get('VRAM_GB', 4) if gpu_info else 4
-        budget = self.config.texture_budget_config.get_recommended_budget(vram)
+        
+        # Obtener VRAM real o usar 2GB como fallback conservador
+        vram = 2
+        if gpu_info and len(gpu_info) > 0:
+            vram = gpu_info[0].get('VRAM_GB', 2)
+            
+        # Calcular budget (20% por cada GB de VRAM, max 100%)
+        budget = min(100, max(0, vram * 20))
+        
         self.session.report.add_recommendation(
-            f'Configura Extended Texture Budget a {budget}%'
+            f'Ajusta "Extended Texture Budget" a {budget}% en los ajustes gráficos de FiveM'
         )
-        self._record_repair(True, f'Texture Budget configurado: {budget}%')
+        self._record_repair(True, f'Cálculo de Texture Budget completado para {vram}GB VRAM: {budget}%')
+        
         return {
             'success': True,
             'vram_detected': vram,
-            'recommended_budget': budget
+            'recommended_budget': budget,
+            'message': f'Se recomienda configurar el Texture Budget al {budget}%'
         }
 
     def optimize_windows(self) -> Dict[str, Any]:
