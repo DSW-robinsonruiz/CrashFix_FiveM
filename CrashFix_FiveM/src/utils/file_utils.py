@@ -42,31 +42,51 @@ def safe_remove_file(filepath: str) -> bool:
 
 def safe_remove_directory(directory: str) -> bool:
     """Elimina un directorio de forma robusta, manejando errores de permisos comunes en Windows."""
-    import time
+    import time, stat
+    if not os.path.exists(directory):
+        return True # Si no existe, objetivo cumplido
+    
     if not os.path.isdir(directory):
-        return False
+        return safe_remove_file(directory)
         
-    def _onerror(func, path, exc_info):
-        """Manejador de errores para shutil.rmtree."""
-        import stat
-        if not os.access(path, os.W_OK):
-            os.chmod(path, stat.S_IWUSR)
-            func(path)
-        else:
-            # Si sigue fallando, podria estar bloqueado por un proceso
-            logger.warning(f"No se pudo eliminar {path}, reintentando en 100ms...")
-            time.sleep(0.1)
-            try: func(path)
-            except: pass
+    def _make_writable(path):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+        except:
+            pass
 
-    try:
-        # Intento normal
-        shutil.rmtree(directory, onerror=_onerror)
-        # Verificar si realmente se borro (shutil.rmtree con onerror puede no lanzar excepcion)
-        return not os.path.exists(directory)
-    except Exception as e:
-        logger.error(f"Error critico eliminando directorio {directory}: {e}")
-        return False
+    def _rmtree_recursive(path):
+        for root, dirs, files in os.walk(path, topdown=False):
+            for name in files:
+                filepath = os.path.join(root, name)
+                _make_writable(filepath)
+                try: os.remove(filepath)
+                except: pass
+            for name in dirs:
+                dirpath = os.path.join(root, name)
+                _make_writable(dirpath)
+                try: os.rmdir(dirpath)
+                except: pass
+        _make_writable(path)
+        try: os.rmdir(path)
+        except: pass
+
+    # Intentar hasta 3 veces con pequeñas esperas
+    for attempt in range(3):
+        try:
+            if not os.path.exists(directory): return True
+            shutil.rmtree(directory, ignore_errors=True)
+            if not os.path.exists(directory): return True
+            
+            # Si shutil falló, intentar borrado manual agresivo
+            _rmtree_recursive(directory)
+            if not os.path.exists(directory): return True
+            
+            time.sleep(0.5) # Esperar a que Windows libere handles
+        except:
+            time.sleep(0.5)
+            
+    return not os.path.exists(directory)
 
 def backup_item(source: str, backup_name: str, backup_folder: str, category: str = 'General', timestamp: Optional[str] = None) -> Optional[str]:
     if not os.path.exists(source): return None

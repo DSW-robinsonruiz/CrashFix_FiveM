@@ -176,19 +176,21 @@ class RepairService:
                 except Exception as e:
                     logger.warning(f"Error backing up {crit_file}: {e}")
 
-        # Definir carpetas a limpiar
+        # Definir carpetas a limpiar (asegurando rutas robustas)
         folders_to_clean = [
             self.paths.fivem_paths.get('Cache', ''),
             os.path.join(fivem_app, 'crashes'),
             os.path.join(fivem_app, 'logs'),
             os.path.join(fivem_app, 'server-cache'),
+            os.path.join(fivem_app, 'data', 'cache'),
+            os.path.join(fivem_app, 'data', 'server-cache'),
         ]
 
-        # Filtrar solo carpetas que existen (evitar trabajo innecesario)
-        existing_folders = [
-            f for f in folders_to_clean
-            if f and os.path.isdir(f)
-        ]
+        # Filtrar solo carpetas que existen
+        existing_folders = []
+        for f in folders_to_clean:
+            if f and os.path.exists(f) and f not in existing_folders:
+                existing_folders.append(f)
 
         if not existing_folders:
             return {
