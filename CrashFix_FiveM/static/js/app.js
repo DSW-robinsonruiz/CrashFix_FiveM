@@ -1335,29 +1335,31 @@ let monitoringInterval = null;
 function startProactiveMonitoring() {
     if (monitoringInterval) clearInterval(monitoringInterval);
     
-    // Monitorear cada 30 segundos para no saturar
     monitoringInterval = setInterval(async () => {
         const result = await apiCall('status', 'GET');
-        if (result && result.Hardware) {
-            const hw = result.Hardware;
-            
+        if (result) {
+            // El backend puede enviar Hardware o hardware_info
+            const hw = result.Hardware || result.hardware_info;
+            if (!hw) return;
+
             // 1. Notificar Temperaturas Críticas
-            if (hw.temperatures) {
-                const { cpu, gpu } = hw.temperatures;
-                if (cpu.status === 'high') {
-                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de CPU alta (${cpu.current}°C). Cierra procesos pesados.`, 'warning');
+            const temps = hw.temperatures || result.temperatures;
+            if (temps) {
+                const { cpu, gpu } = temps;
+                if (cpu && cpu.status === 'high') {
+                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de CPU alta (${cpu.current}°C).`, 'warning');
                 }
-                if (gpu.status === 'high') {
-                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de GPU alta (${gpu.current}°C). Revisa la ventilación.`, 'warning');
+                if (gpu && gpu.status === 'high') {
+                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de GPU alta (${gpu.current}°C).`, 'warning');
                 }
             }
             
             // 2. Notificar RAM Crítica
-            if (hw.RAM && hw.RAM.UsedPercent > 90) {
-                addConsoleLine(`\u26a0 ALERTA PROACTIVA: Uso de RAM crítico (${hw.RAM.UsedPercent}%). FiveM podría cerrarse.`, 'warning');
+            const ram = hw.RAM || result.ram;
+            if (ram && ram.UsedPercent > 90) {
+                addConsoleLine(`\u26a0 ALERTA PROACTIVA: Uso de RAM crítico (${ram.UsedPercent}%).`, 'warning');
             }
             
-            // Actualizar UI en segundo plano
             updateSystemInfoCard(result);
         }
     }, 30000);

@@ -80,14 +80,19 @@ class RepairService:
             self._record_repair(False, message)
             return {"success": False, "message": message, "details": integrity_check}
 
-    def kill_fivem_processes(self) -> Dict[str, Any]:
-        """Termina todos los procesos relacionados con FiveM."""
+    def kill_fivem_processes(self, force_wait: bool = True) -> Dict[str, Any]:
+        """Termina todos los procesos relacionados con FiveM de forma agresiva."""
         processes = self.diagnostic_config.fivem_processes
-        results = kill_processes(processes)
+        # Reintentar matar procesos si siguen vivos
+        results = kill_processes(processes, force=True)
         killed = sum(1 for success in results.values() if success)
+        
+        if force_wait:
+            # Esperar un poco mas para que Windows libere los handles de archivos
+            time.sleep(2.0) 
+            
         if killed > 0:
-            self._record_repair(True, f'{killed} procesos terminados')
-        time.sleep(self.timeout_config.process_kill_wait)
+            self._record_repair(True, f'{killed} procesos terminados agresivamente')
         return {'success': True, 'killed': killed, 'details': results}
 
     # ============= CACHE =============
@@ -113,18 +118,25 @@ class RepairService:
             folder_path = os.path.join(cache_path, folder)
             if os.path.exists(folder_path):
                 try:
-                    size_freed += get_folder_size(folder_path)
+                    size = get_folder_size(folder_path)
                     if safe_remove_directory(folder_path):
+                        size_freed += size
                         cleared += 1
+                    else:
+                        errors.append(f"{folder}: No se pudo eliminar (archivo bloqueado)")
                 except Exception as e:
                     errors.append(f"{folder}: {str(e)}")
 
         size_mb = round(size_freed / (1024 * 1024), 2)
+        success = cleared > 0 or not safe_folders
+        
         if cleared > 0:
             self._record_repair(True, f'Cache selectiva limpiada ({size_mb} MB)')
+        elif errors:
+            self._record_repair(False, f'Fallo al limpiar cache selectiva: {errors[0]}')
 
         return {
-            'success': True,
+            'success': success,
             'cleaned_mb': size_mb,
             'cleared': cleared,
             'errors': errors if errors else None
@@ -212,9 +224,23 @@ class RepairService:
             folder_name = os.path.basename(folder)
             try:
                 if safe_remove_directory(folder):
+                    # Recrear la carpeta si es necesario (ej: logs o cache)
+                    if 'cache' in folder.lower() or 'logs' in folder.lower():
+                        ensure_directory_exists(folder)
                     return {'folder': folder_name, 'size_mb': size_mb, 'status': 'cleaned'}
                 else:
-                    return {'folder': folder_name, 'size_mb': size_mb, 'status': 'error'}
+                    # Intentar vaciar el contenido si no se puede borrar la carpeta raiz
+                    cleared_files = 0
+                    for item in os.listdir(folder):
+                        item_path = os.path.join(folder, item)
+                        if os.path.isfile(item_path):
+                            if safe_remove_file(item_path): cleared_files += 1
+                        elif os.path.isdir(item_path):
+                            if safe_remove_directory(item_path): cleared_files += 1
+                    
+                    if cleared_files > 0:
+                        return {'folder': folder_name, 'size_mb': size_mb, 'status': 'partially_cleaned', 'msg': f'Se borraron {cleared_files} elementos internos'}
+                    return {'folder': folder_name, 'size_mb': size_mb, 'status': 'error', 'error': 'Carpeta bloqueada'}
             except Exception as e:
                 logger.warning(f"Error limpiando {folder}: {e}")
                 return {'folder': folder_name, 'size_mb': size_mb, 'status': 'error', 'error': str(e)}

@@ -41,13 +41,31 @@ def safe_remove_file(filepath: str) -> bool:
         return False
 
 def safe_remove_directory(directory: str) -> bool:
-    try:
-        if os.path.isdir(directory):
-            shutil.rmtree(directory)
-            return True
+    """Elimina un directorio de forma robusta, manejando errores de permisos comunes en Windows."""
+    import time
+    if not os.path.isdir(directory):
         return False
-    except (OSError, IOError, PermissionError) as e:
-        logger.error(f"Error removing directory {directory}: {e}")
+        
+    def _onerror(func, path, exc_info):
+        """Manejador de errores para shutil.rmtree."""
+        import stat
+        if not os.access(path, os.W_OK):
+            os.chmod(path, stat.S_IWUSR)
+            func(path)
+        else:
+            # Si sigue fallando, podria estar bloqueado por un proceso
+            logger.warning(f"No se pudo eliminar {path}, reintentando en 100ms...")
+            time.sleep(0.1)
+            try: func(path)
+            except: pass
+
+    try:
+        # Intento normal
+        shutil.rmtree(directory, onerror=_onerror)
+        # Verificar si realmente se borro (shutil.rmtree con onerror puede no lanzar excepcion)
+        return not os.path.exists(directory)
+    except Exception as e:
+        logger.error(f"Error critico eliminando directorio {directory}: {e}")
         return False
 
 def backup_item(source: str, backup_name: str, backup_folder: str, category: str = 'General', timestamp: Optional[str] = None) -> Optional[str]:
