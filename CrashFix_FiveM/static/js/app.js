@@ -159,6 +159,21 @@ function updateSystemInfoCard(data) {
         const vcEl = document.getElementById('vcredist-status');
         vcEl.textContent = data.vcredist.status === 'complete' ? 'OK' : 'Incompleto';
     }
+
+    // Temperaturas
+    const tempInfo = data.temperatures || (data.Hardware && data.Hardware.temperatures);
+    if (tempInfo) {
+        if (tempInfo.cpu && tempInfo.cpu.current !== null) {
+            const cpuTempEl = document.getElementById('cpu-temp');
+            cpuTempEl.textContent = `${tempInfo.cpu.current}°C`;
+            cpuTempEl.className = `info-value status-${tempInfo.cpu.status}`;
+        }
+        if (tempInfo.gpu && tempInfo.gpu.current !== null) {
+            const gpuTempEl = document.getElementById('gpu-temp');
+            gpuTempEl.textContent = `${tempInfo.gpu.current}°C`;
+            gpuTempEl.className = `info-value status-${tempInfo.gpu.status}`;
+        }
+    }
 }
 
 // ============= API =============
@@ -829,6 +844,20 @@ async function closeConflicts() {
         addConsoleLine('&check; Software conflictivo cerrado', 'success');
         repairs.push('Software conflictivo cerrado');
         updateCounters(); updateRepairsList();
+    }
+    hideLoading();
+}
+
+async function clearFiveMLogs() {
+    showLoading('Limpiando logs...');
+    addConsoleLine('Limpiando archivos de logs de FiveM...', 'info');
+    const result = await apiCall('repair/logs/clear');
+    if (result && result.success) {
+        addConsoleLine(`&check; Logs limpiados (${result.cleaned_mb} MB liberados)`, 'success');
+        repairs.push('Logs de FiveM limpiados');
+        updateCounters(); updateRepairsList();
+    } else {
+        addConsoleLine(`Error: ${result ? result.error : 'Sin respuesta'}`, 'error');
     }
     hideLoading();
 }

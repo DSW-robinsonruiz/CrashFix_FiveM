@@ -68,7 +68,7 @@ class RepairService:
         # Reutilizar la lógica de diagnóstico para verificar archivos
         from src.services.diagnostic_service import DiagnosticService
         diag_service = DiagnosticService(self.config)
-        integrity_check = diag_service.check_gta_integrity(gta_path)
+        integrity_check = diag_service.verify_gtav_integrity(gta_path)
 
         if integrity_check["status"] == "ok":
             message = "Integridad de archivos de GTA V verificada: OK."
@@ -538,6 +538,21 @@ class RepairService:
 
     # ============= FIREWALL Y DEFENDER =============
 
+    def clear_fivem_logs(self) -> Dict[str, Any]:
+        """Limpia los archivos de logs de FiveM para ahorrar espacio y mejorar privacidad."""
+        log_dir = self.paths.fivem_paths.get('Logs', '')
+        if not log_dir or not os.path.exists(log_dir):
+            return {'success': False, 'error': 'Directorio de logs no encontrado'}
+
+        size_freed = get_folder_size(log_dir)
+        if safe_remove_directory(log_dir):
+            ensure_directory_exists(log_dir)
+            size_mb = round(size_freed / (1024 * 1024), 2)
+            self._record_repair(True, f'Logs de FiveM limpiados ({size_mb} MB)')
+            return {'success': True, 'cleaned_mb': size_mb}
+        
+        return {'success': False, 'error': 'No se pudieron eliminar los logs'}
+
     def add_firewall_exclusions(self) -> Dict[str, Any]:
         """Agrega reglas de firewall para permitir FiveM."""
         if not is_windows():
@@ -631,6 +646,7 @@ class RepairService:
             12: ('Configurar Texture Budget',  self.configure_texture_budget),
             13: ('Optimizaciones de Windows',  self.optimize_windows),
             14: ('Actualizar driver GPU',       self.update_gpu_driver),
+            15: ('Limpiar logs de FiveM',      self.clear_fivem_logs),
         }
 
         results = []

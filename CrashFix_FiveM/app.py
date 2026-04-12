@@ -567,6 +567,16 @@ def api_analyze_crashdumps():
     return jsonify(diag.analyze_crash_dumps())
 
 
+@app.route('/api/repair/logs/clear', methods=['POST'])
+@api_error_handler
+def api_repair_logs_clear():
+    """Limpia los archivos de logs de FiveM para ahorrar espacio."""
+    diag_session = get_current_session()
+    repair = RepairService(svc_cfg, diag_session)
+    # Implementaremos este metodo en RepairService
+    return jsonify(repair.clear_fivem_logs())
+
+
 @app.route('/api/verify/gtav', methods=['POST'])
 @api_error_handler
 def api_verify_gtav():
@@ -695,6 +705,11 @@ def api_smart_diagnose_and_fix():
     if entry_point_errors:
         dll_result = repair.remove_conflicting_dlls()
         auto_repairs.append({'action': 'Eliminar DLLs conflictivas', 'result': dll_result, 'reason': 'Error Entry Point Not Found detectado'})
+
+    # Si hay demasiados errores en logs o son muy grandes: limpiar logs
+    if errors_info.get('ErrorCount', 0) > 10:
+        log_result = repair.clear_fivem_logs()
+        auto_repairs.append({'action': 'Limpiar logs de FiveM', 'result': log_result, 'reason': f'Exceso de errores ({errors_info["ErrorCount"]}) detectado'})
 
     # Si hay mods detectados
     if mods_info.get('Count', 0) > 0:

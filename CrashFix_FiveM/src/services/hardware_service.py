@@ -137,8 +137,14 @@ class HardwareService:
         return cpu_info
 
     def get_system_temperatures(self) -> Dict[str, Any]:
+        """Obtiene las temperaturas de CPU y GPU.
+        
+        Nota: La temperatura de CPU en Windows a menudo requiere privilegios de administrador
+        y soporte de la placa base/WMI (MSAcpi_ThermalZoneTemperature).
+        """
         temps = {'cpu': {'current': None, 'status': 'unknown'}, 'gpu': {'current': None, 'status': 'unknown'}, 'warnings': []}
         if is_windows():
+            # GPU Temperature (NVIDIA)
             try:
                 result = run_command(['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader'], timeout=self.timeout_config.nvidia_smi_timeout)
                 if result and result.returncode == 0:
@@ -149,6 +155,22 @@ class HardwareService:
                         temps['warnings'].append(f'Temperatura GPU alta: {gpu_temp}°C')
             except Exception:
                 pass
+
+            # CPU Temperature (WMI fallback)
+            try:
+                # Intentar obtener temperatura via WMI (puede no funcionar en todos los sistemas sin admin)
+                res = run_powershell('get-wmiobject -namespace root\\wmi -class MSAcpi_ThermalZoneTemperature | select -expand CurrentTemperature', timeout=5)
+                if res:
+                    # El valor esta en Kelvin * 10
+                    cpu_temp = round((float(res.strip()) / 10.0) - 273.15, 1)
+                    if 0 < cpu_temp < 110: # Filtro de valores plausibles
+                        status = 'normal' if cpu_temp < 85 else 'high'
+                        temps['cpu'] = {'current': cpu_temp, 'status': status}
+                        if cpu_temp >= 85:
+                            temps['warnings'].append(f'Temperatura CPU alta: {cpu_temp}°C')
+            except Exception:
+                pass
+                
         return temps
 
     def get_antivirus_info(self) -> Dict[str, Any]:
