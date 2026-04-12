@@ -12,21 +12,15 @@ class HardwareService:
         self.timeout_config = config.timeout_config
 
     def get_gpu_info(self) -> List[Dict[str, Any]]:
-        """Detecta informacion de GPU con VRAM precisa.
-
-        Win32_VideoController.AdapterRAM es uint32 y trunca a 4 GB para GPUs
-        con mas de 4 GB de VRAM. Para obtener el valor real se usan fuentes
-        alternativas en este orden:
-        1. nvidia-smi (NVIDIA GPUs - valor exacto)
-        2. Registro de Windows (qwMemorySize - valor de 64 bits)
-        3. Win32_VideoController como fallback
+        """Detecta informacion de GPU con VRAM precisa para multiples GPUs.
+        
+        Soporta sistemas hibridos (Intel/AMD Integrada + NVIDIA/AMD Dedicada).
         """
         gpus = []
         if is_windows():
-            # Fuente 1: nvidia-smi (mas precisa para NVIDIA)
-            nvidia_vram = self._get_nvidia_vram()
+            # Obtener VRAM de NVIDIA via nvidia-smi si esta disponible
+            nvidia_vrams = self._get_all_nvidia_vrams()
 
-            # Fuente 2: WMI para nombres y drivers + correccion de VRAM
             try:
                 result = run_powershell(
                     'Get-WmiObject Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion, PNPDeviceID | ConvertTo-Json',
@@ -35,40 +29,58 @@ class HardwareService:
                 if result:
                     data = json.loads(result)
                     if not isinstance(data, list): data = [data]
+                    
+                    nvidia_idx = 0
                     for gpu in data:
                         name = gpu.get('Name', 'Desconocido')
                         driver = gpu.get('DriverVersion', 'N/A')
                         pnp_id = gpu.get('PNPDeviceID', '')
-
-                        # Determinar VRAM con la mejor fuente disponible
                         vram_gb = 0
 
-                        # Intentar nvidia-smi primero (si es NVIDIA)
-                        if nvidia_vram and 'nvidia' in name.lower():
-                            vram_gb = nvidia_vram
-                        else:
-                            # Intentar leer del registro (soporta >4 GB)
-                            reg_vram = self._get_vram_from_registry(pnp_id)
-                            if reg_vram > 0:
-                                vram_gb = reg_vram
+                        # 1. Intentar nvidia-smi si es NVIDIA
+                        if 'nvidia' in name.lower() and nvidia_idx < len(nvidia_vrams):
+                            vram_gb = nvidia_vrams[nvidia_idx]
+                            nvidia_idx += 1
+                        
+                        # 2. Intentar Registro (soporta >4GB para AMD/Intel/NVIDIA)
+                        if vram_gb == 0:
+                            vram_gb = self._get_vram_from_registry(pnp_id)
 
-                        # Fallback: WMI AdapterRAM (trunca a 4 GB)
+                        # 3. Fallback: WMI (limitado a 4GB)
                         if vram_gb == 0:
                             adapter_ram = gpu.get('AdapterRAM', 0)
-                            if adapter_ram and int(adapter_ram) > 0:
-                                vram_gb = round(int(adapter_ram) / (1024**3), 1)
+                            if adapter_ram:
+                                # A veces AdapterRAM es negativo por desbordamiento de uint32
+                                val = int(adapter_ram)
+                                if val < 0: val += 2**32
+                                vram_gb = round(val / (1024**3), 1)
 
                         gpus.append({
                             'Name': name,
                             'VRAM_GB': vram_gb,
-                            'DriverVersion': driver
+                            'DriverVersion': driver,
+                            'Type': 'Dedicada' if vram_gb >= 2 else 'Integrada'
                         })
-            except (json.JSONDecodeError, Exception) as e:
-                logger.warning(f"GPU info error: {e}")
+            except Exception as e:
+                logger.warning(f"Error detectando GPUs: {e}")
 
         if not gpus:
-            gpus = [{'Name': 'No detectada', 'VRAM_GB': 0, 'DriverVersion': 'N/A'}]
-        return gpus
+            gpus = [{'Name': 'No detectada', 'VRAM_GB': 0, 'DriverVersion': 'N/A', 'Type': 'N/A'}]
+        
+        # Ordenar: Dedicadas primero
+        return sorted(gpus, key=lambda x: x['VRAM_GB'], reverse=True)
+
+    def _get_all_nvidia_vrams(self) -> List[float]:
+        """Obtiene VRAM de todas las GPUs NVIDIA conectadas."""
+        try:
+            result = run_command(
+                ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+                timeout=self.timeout_config.nvidia_smi_timeout
+            )
+            if result and result.returncode == 0:
+                return [round(int(v) / 1024, 1) for v in result.stdout.strip().split('\n') if v.strip()]
+        except: pass
+        return []
 
     def _get_nvidia_vram(self) -> float:
         """Obtiene VRAM total via nvidia-smi (preciso, sin limite de 4 GB)."""

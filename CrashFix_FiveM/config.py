@@ -121,6 +121,31 @@ class ErrorPatterns:
             'severity': 'medium',
             'description': 'Timeout de conexión',
             'solution': 'Verifica tu conexión a internet'
+        },
+        'ERR_GFX_D3D_SWAPCHAIN_ALLOC': {
+            'severity': 'critical',
+            'description': 'Error en el swapchain de DirectX (común en 2024)',
+            'solution': 'Desactiva el Overclock de la GPU o baja la escala de resolución'
+        },
+        'Cfx_Shared_Data_Error': {
+            'severity': 'high',
+            'description': 'Error de datos compartidos de CitizenFX',
+            'solution': 'Limpia la caché completa de FiveM'
+        },
+        'Failed to fetch server info': {
+            'severity': 'medium',
+            'description': 'Fallo al obtener info del servidor (posible bloqueo DNS)',
+            'solution': 'Cambia a Google DNS o Cloudflare'
+        },
+        'GTA5.exe+': {
+            'severity': 'high',
+            'description': 'Crash de memoria en GTA5.exe (2025-2026)',
+            'solution': 'Aumenta el Texture Budget a 50% o más'
+        },
+        'Pool Size Overflow': {
+            'severity': 'critical',
+            'description': 'Desbordamiento de memoria de texturas',
+            'solution': 'Reduce la calidad de texturas en el juego'
         }
     })
 

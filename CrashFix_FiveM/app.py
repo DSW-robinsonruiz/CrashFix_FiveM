@@ -711,13 +711,27 @@ def api_smart_diagnose_and_fix():
         log_result = repair.clear_fivem_logs()
         auto_repairs.append({'action': 'Limpiar logs de FiveM', 'result': log_result, 'reason': f'Exceso de errores ({errors_info["ErrorCount"]}) detectado'})
 
-    # Si hay mods detectados
+    # --- AUTOMATIZACIÓN TOTAL: Reparar todo lo posible ---
+    
+    # Si hay mods detectados y estamos en modo auto-fix
     if mods_info.get('Count', 0) > 0:
-        report.add_recommendation(f'Se detectaron {mods_info["Count"]} mods. Considera desactivarlos si tienes problemas.')
+        mod_res = repair.disable_gta_mods()
+        auto_repairs.append({'action': 'Desactivar mods de GTA V', 'result': mod_res, 'reason': f'{mods_info["Count"]} mods detectados'})
 
     # Si hay software conflictivo
     if conflicts_info.get('Count', 0) > 0:
-        report.add_recommendation(f'Software conflictivo detectado: {", ".join(conflicts_info.get("ConflictsFound", []))}')
+        conf_res = repair.close_conflicting_software()
+        auto_repairs.append({'action': 'Cerrar software conflictivo', 'result': conf_res, 'reason': f'{conflicts_info["Count"]} programas detectados'})
+    
+    # Optimizar red si el ping es alto
+    if network_info.get('Ping', 0) > 100:
+        net_res = net.optimize_network_stack()
+        auto_repairs.append({'action': 'Optimizar red (Ping alto)', 'result': net_res, 'reason': f'Latencia de {network_info["Ping"]}ms'})
+    
+    # Optimizar Texture Budget automáticamente según VRAM
+    if gpu_info and gpu_info[0].get('VRAM_GB', 0) > 0:
+        tex_res = repair.configure_texture_budget()
+        auto_repairs.append({'action': 'Ajustar Texture Budget', 'result': tex_res, 'reason': f'VRAM detectada: {gpu_info[0]["VRAM_GB"]}GB'})
 
     # Verificar si el driver de GPU esta desactualizado
     driver_check = hw.check_driver_update()

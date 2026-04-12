@@ -248,10 +248,13 @@ async function runSmartDiagnosis() {
         // Mostrar reparaciones automaticas aplicadas
         const autoRepairs = result.auto_repairs || [];
         if (autoRepairs.length > 0) {
-            addConsoleLine('--- Reparaciones automaticas ---', 'info');
+            addConsoleLine('--- MANTENIMIENTO TOTAL: Reparaciones Aplicadas ---', 'info');
             autoRepairs.forEach(ar => {
-                addConsoleLine(`  &check; ${ar.action} (${ar.reason})`, 'success');
-                if (!repairs.includes(ar.action)) repairs.push(ar.action);
+                const success = ar.result && (ar.result.success || ar.result.action);
+                const icon = success ? '&check;' : '&cross;';
+                const type = success ? 'success' : 'error';
+                addConsoleLine(`  ${icon} ${ar.action}: ${ar.reason}`, type);
+                if (success && !repairs.includes(ar.action)) repairs.push(ar.action);
             });
         }
 
@@ -1325,7 +1328,44 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ============= MONITOREO PROACTIVO =============
+
+let monitoringInterval = null;
+
+function startProactiveMonitoring() {
+    if (monitoringInterval) clearInterval(monitoringInterval);
+    
+    // Monitorear cada 30 segundos para no saturar
+    monitoringInterval = setInterval(async () => {
+        const result = await apiCall('status', 'GET');
+        if (result && result.Hardware) {
+            const hw = result.Hardware;
+            
+            // 1. Notificar Temperaturas Críticas
+            if (hw.temperatures) {
+                const { cpu, gpu } = hw.temperatures;
+                if (cpu.status === 'high') {
+                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de CPU alta (${cpu.current}°C). Cierra procesos pesados.`, 'warning');
+                }
+                if (gpu.status === 'high') {
+                    addConsoleLine(`\u26a0 ALERTA PROACTIVA: Temperatura de GPU alta (${gpu.current}°C). Revisa la ventilación.`, 'warning');
+                }
+            }
+            
+            // 2. Notificar RAM Crítica
+            if (hw.RAM && hw.RAM.UsedPercent > 90) {
+                addConsoleLine(`\u26a0 ALERTA PROACTIVA: Uso de RAM crítico (${hw.RAM.UsedPercent}%). FiveM podría cerrarse.`, 'warning');
+            }
+            
+            // Actualizar UI en segundo plano
+            updateSystemInfoCard(result);
+        }
+    }, 30000);
+}
+
 // Inicializacion
 document.addEventListener('DOMContentLoaded', function() {
     refreshStatus();
+    startProactiveMonitoring();
+    addConsoleLine('Monitoreo proactivo activado (30s)', 'info');
 });
