@@ -241,6 +241,13 @@ class SessionManager:
                 return True
             return False
 
+    def get_latest_session(self) -> Optional[DiagnosticSession]:
+        """Devuelve la sesion mas reciente o None si no hay sesiones."""
+        with self._session_lock:
+            if self._sessions:
+                return list(self._sessions.values())[-1]
+            return None
+
     @property
     def active_sessions_count(self) -> int:
         """Devuelve el numero de sesiones activas."""

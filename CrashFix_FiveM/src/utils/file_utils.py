@@ -52,24 +52,30 @@ def safe_remove_directory(directory: str) -> bool:
     def _make_writable(path):
         try:
             os.chmod(path, stat.S_IWRITE)
-        except:
-            pass
+        except (OSError, PermissionError) as e:
+            logger.debug(f"No se pudo cambiar permisos de {path}: {e}")
 
     def _rmtree_recursive(path):
         for root, dirs, files in os.walk(path, topdown=False):
             for name in files:
                 filepath = os.path.join(root, name)
                 _make_writable(filepath)
-                try: os.remove(filepath)
-                except: pass
+                try:
+                    os.remove(filepath)
+                except (OSError, PermissionError) as e:
+                    logger.warning(f"No se pudo eliminar archivo {filepath}: {e}")
             for name in dirs:
                 dirpath = os.path.join(root, name)
                 _make_writable(dirpath)
-                try: os.rmdir(dirpath)
-                except: pass
+                try:
+                    os.rmdir(dirpath)
+                except (OSError, PermissionError) as e:
+                    logger.warning(f"No se pudo eliminar directorio {dirpath}: {e}")
         _make_writable(path)
-        try: os.rmdir(path)
-        except: pass
+        try:
+            os.rmdir(path)
+        except (OSError, PermissionError) as e:
+            logger.warning(f"No se pudo eliminar directorio raiz {path}: {e}")
 
     # Intentar hasta 3 veces con pequeñas esperas
     for attempt in range(3):
@@ -83,10 +89,14 @@ def safe_remove_directory(directory: str) -> bool:
             if not os.path.exists(directory): return True
             
             time.sleep(0.5) # Esperar a que Windows libere handles
-        except:
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Intento {attempt + 1}/3 de eliminar {directory} fallo: {e}")
             time.sleep(0.5)
             
-    return not os.path.exists(directory)
+    still_exists = os.path.exists(directory)
+    if still_exists:
+        logger.error(f"No se pudo eliminar {directory} despues de 3 intentos")
+    return not still_exists
 
 def backup_item(source: str, backup_name: str, backup_folder: str, category: str = 'General', timestamp: Optional[str] = None) -> Optional[str]:
     if not os.path.exists(source): return None

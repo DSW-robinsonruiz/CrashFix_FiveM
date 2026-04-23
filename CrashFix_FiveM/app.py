@@ -3,7 +3,7 @@ import os, sys, logging, json, uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from flask import Flask, render_template, jsonify, request, send_file
-from config import ServerConfig, SystemPaths, DiagnosticConfig, ErrorPatterns
+from config import AppConfig
 
 # Importar servicios
 from src.services.diagnostic_service import DiagnosticService
@@ -18,31 +18,15 @@ logger = logging.getLogger(__name__)
 
 # Inicializar Flask y configuraciones
 app = Flask(__name__)
-from config import NetworkConfig, TextureBudgetConfig, SystemRequirements
-svc_cfg = type('Config', (), {
-    'server_config': ServerConfig(),
-    'system_paths': SystemPaths(),
-    'diagnostic_config': DiagnosticConfig(),
-    'error_patterns': ErrorPatterns(),
-    'network_config': NetworkConfig(),
-    'texture_budget_config': TextureBudgetConfig(),
-    'system_requirements': SystemRequirements(),
-    'timeout_config': type('Timeout', (), {
-        'powershell_timeout': 30,
-        'command_timeout': 30,
-        'nvidia_smi_timeout': 10,
-        'packet_loss_timeout': 15,
-        'process_kill_wait': 2
-    })()
-})()
+svc_cfg = AppConfig()
 app.secret_key = svc_cfg.server_config.secret_key
 
 def get_current_session():
-    # En esta aplicacion manejamos una sesion activa principal
+    """Obtiene la sesion activa principal o crea una nueva."""
     sm = get_session_manager()
-    if sm.active_sessions_count > 0:
-        # Retornar la ultima sesion activa
-        return list(sm._sessions.values())[-1]
+    latest = sm.get_latest_session()
+    if latest is not None:
+        return latest
     return sm.create_session()
 
 def api_error_handler(f):
@@ -423,11 +407,18 @@ def api_report_generate():
 
 @app.route('/api/report/view', methods=['GET'])
 def api_report_view():
-    """Sirve un reporte generado."""
+    """Sirve un reporte generado (validado contra path traversal)."""
     path = request.args.get('path')
-    if path and os.path.exists(path):
-        return send_file(path)
-    return "Reporte no encontrado", 404
+    if not path:
+        return "Reporte no encontrado", 404
+    # Resolver ruta absoluta y validar que este dentro del directorio de trabajo
+    resolved = os.path.realpath(path)
+    allowed_base = os.path.realpath(svc_cfg.system_paths.work_folder)
+    if not resolved.startswith(allowed_base + os.sep) and resolved != allowed_base:
+        return "Acceso denegado", 403
+    if not os.path.exists(resolved):
+        return "Reporte no encontrado", 404
+    return send_file(resolved)
 
 # ============= DETECCION / OTROS =============
 
@@ -557,9 +548,42 @@ def api_repair_quick():
 @app.route('/api/diagnostic/full/v2', methods=['POST'])
 @api_error_handler
 def api_diagnostic_full_v2():
-    """Ejecuta el diagnostico PRO v2.0."""
-    # Similar a smart diagnose pero sin aplicar cambios
-    return api_smart_diagnose_and_fix()
+    """Ejecuta el diagnostico PRO v2.0 (solo lectura, sin reparaciones)."""
+    diag_session = get_current_session()
+    diag = DiagnosticService(svc_cfg)
+    hw = HardwareService(svc_cfg)
+    net = NetworkService(svc_cfg)
+
+    reqs = diag.check_requirements()
+    gta_info = diag.get_gtav_path()
+    fivem_info = diag.get_fivem_path()
+    errors_info = diag.analyze_recent_errors()
+    gpu_info = hw.get_gpu_info()
+    ram_info = hw.get_ram_info()
+    cpu_info = hw.get_cpu_info()
+    os_info = hw.get_os_info()
+    network_info = net.test_network_quality()
+    driver_check = hw.check_driver_update()
+
+    report = diag_session.report
+    report.update_hardware(gpu=gpu_info, ram=ram_info, cpu=cpu_info, os=os_info)
+    report.update_network(status=network_info.get('Status', 'OK'), ping=network_info.get('Ping', 0))
+    report.gta_info = gta_info
+    report.fivem_info = fivem_info
+    report.calculate_overall_status()
+
+    return jsonify({
+        'success': True,
+        'requirements': reqs,
+        'Summary': report.to_dict().get('Summary', {}),
+        'Hardware': report.to_dict().get('Hardware', {}),
+        'Network': report.to_dict().get('Network', {}),
+        'GTA': gta_info,
+        'fivem': fivem_info,
+        'errors': errors_info,
+        'driver_update': driver_check,
+        'temperatures': hw.get_system_temperatures()
+    })
 
 @app.route('/api/repair/kill', methods=['POST'])
 @api_error_handler

@@ -219,3 +219,20 @@ def get_timestamp() -> str:
 def get_formatted_datetime() -> str:
     from datetime import datetime
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+# ============= CONFIGURACION CENTRALIZADA DE LA APP =============
+@dataclass
+class AppConfig:
+    """Configuracion centralizada que agrupa todas las sub-configuraciones."""
+    server_config: ServerConfig = field(default_factory=ServerConfig)
+    system_paths: SystemPaths = field(default_factory=SystemPaths)
+    diagnostic_config: DiagnosticConfig = field(default_factory=DiagnosticConfig)
+    error_patterns: ErrorPatterns = field(default_factory=ErrorPatterns)
+    network_config: NetworkConfig = field(default_factory=NetworkConfig)
+    texture_budget_config: TextureBudgetConfig = field(default_factory=TextureBudgetConfig)
+    system_requirements: SystemRequirements = field(default_factory=SystemRequirements)
+    timeout_config: TimeoutConfig = field(default_factory=TimeoutConfig)
+
+
+app_config = AppConfig()

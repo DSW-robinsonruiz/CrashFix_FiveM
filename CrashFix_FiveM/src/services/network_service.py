@@ -36,9 +36,10 @@ class NetworkService:
         if is_windows():
             for target in targets:
                 try:
-                    # Usar shell=True para que el comando ping de Windows funcione correctamente con run_command
-                    from src.utils.system_utils import run_command
-                    res = run_command(f'ping -n 5 {target}', timeout=self.timeout_config.packet_loss_timeout)
+                    res = run_command(
+                        ['ping', '-n', '5', target],
+                        timeout=self.timeout_config.packet_loss_timeout
+                    )
                     if res and res.stdout:
                         # Buscar patrones de pérdida de paquetes en español e inglés
                         match = re.search(r'(\d+)%\s*(?:perdidos|loss)', res.stdout, re.IGNORECASE)
@@ -50,7 +51,22 @@ class NetworkService:
                     logger.warning(f"Packet loss test error for {target}: {e}")
                     results.append({'name': target, 'packet_loss': 100, 'status': 'error'})
         else:
-            results = [{'name': t, 'packet_loss': 0, 'status': 'ok'} for t in targets]
+            # Linux/macOS: ejecutar ping real en vez de hardcodear 0%
+            for target in targets:
+                try:
+                    res = run_command(
+                        ['ping', '-c', '5', '-W', '2', target],
+                        timeout=self.timeout_config.packet_loss_timeout
+                    )
+                    if res and res.stdout:
+                        match = re.search(r'(\d+)%\s*packet loss', res.stdout, re.IGNORECASE)
+                        loss = int(match.group(1)) if match else 0
+                        results.append({'name': target, 'packet_loss': loss, 'status': 'ok' if loss < 5 else 'high'})
+                    else:
+                        results.append({'name': target, 'packet_loss': 100, 'status': 'error'})
+                except Exception as e:
+                    logger.warning(f"Packet loss test error for {target}: {e}")
+                    results.append({'name': target, 'packet_loss': 100, 'status': 'error'})
         
         valid = [r['packet_loss'] for r in results if r['packet_loss'] >= 0]
         avg_loss = round(sum(valid) / len(valid), 1) if valid else 0
@@ -65,29 +81,34 @@ class NetworkService:
         """Optimiza la pila de red: Flush DNS, Reset Winsock e IP."""
         results = []
         if is_windows():
-            from src.utils.system_utils import run_command
             commands = [
-                ('ipconfig /flushdns', 'Flush DNS Cache'),
-                ('netsh winsock reset', 'Reset Winsock Catalog'),
-                ('netsh int ip reset c:\\resetlog.txt', 'Reset TCP/IP Stack'),
-                ('netsh interface ip delete arpcache', 'Clear ARP Cache'),
-                ('netsh int ip set address name="Ethernet" source=dhcp', 'Reset Ethernet DHCP'),
-                ('netsh int ip set address name="Wi-Fi" source=dhcp', 'Reset Wi-Fi DHCP')
+                (['ipconfig', '/flushdns'], 'Flush DNS Cache'),
+                (['netsh', 'winsock', 'reset'], 'Reset Winsock Catalog'),
+                (['netsh', 'int', 'ip', 'reset', 'c:\\resetlog.txt'], 'Reset TCP/IP Stack'),
+                (['netsh', 'interface', 'ip', 'delete', 'arpcache'], 'Clear ARP Cache'),
+                (['netsh', 'int', 'ip', 'set', 'address', 'name=Ethernet', 'source=dhcp'], 'Reset Ethernet DHCP'),
+                (['netsh', 'int', 'ip', 'set', 'address', 'name=Wi-Fi', 'source=dhcp'], 'Reset Wi-Fi DHCP')
             ]
             for cmd, desc in commands:
                 try:
-                    # Ejecutar comandos de red uno por uno
                     res = run_command(cmd, timeout=15)
-                    success = res is not None # Algunos comandos netsh devuelven 0 pero fallan en sandbox, en Windows real suelen ir bien
+                    success = res is not None and res.returncode == 0
                     results.append({'action': desc, 'success': success})
                 except Exception as e:
                     results.append({'action': desc, 'success': False, 'error': str(e)})
+        else:
+            results.append({'action': 'Red', 'success': False, 'error': 'Solo disponible en Windows'})
         
         success_count = sum(1 for r in results if r['success'])
+        total_count = len(results)
+        overall_success = success_count > 0
+
         return {
-            'success': True, # Siempre devolvemos true para que el frontend no se bloquee
+            'success': overall_success,
             'actions': results,
-            'message': f"Reset de red completado: {success_count} acciones realizadas."
+            'message': f"Reset de red: {success_count}/{total_count} acciones completadas."
+                       if overall_success
+                       else f"Reset de red fallido: ninguna de las {total_count} acciones se completo."
         }
 
     def optimize_dns(self) -> Dict[str, Any]:
@@ -102,7 +123,6 @@ class NetworkService:
         best = None
         best_latency = 9999
         
-        from src.utils.system_utils import ping_host
         for dns in dns_servers:
             # Hacer 3 pings para mayor precision
             ping_result = ping_host(dns['ip'], count=3, timeout_ms=1000)
