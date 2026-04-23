@@ -182,6 +182,7 @@ def api_smart_diagnose_and_fix():
     report.update_network(status=network_info['Status'], ping=network_info['Ping'])
     report.gta_info = gta_info
     report.fivem_info = fivem_info
+    report.calculate_overall_status()
     
     return jsonify({
         'success': True,

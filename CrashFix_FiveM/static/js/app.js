@@ -82,8 +82,16 @@ function updateRecommendations() {
 function updateSystemInfoCard(data) {
     if (!data) return;
 
-    // GPU
-    const gpuData = data.gpu || (data.Hardware && data.Hardware.GPU);
+    // Estado general (desde Summary o status directo)
+    const summary = data.Summary || data.summary;
+    if (summary && summary.OverallStatus) {
+        document.getElementById('status-value').textContent = summary.OverallStatus;
+    } else if (data.status) {
+        document.getElementById('status-value').textContent = data.status;
+    }
+
+    // GPU (backend devuelve Hardware.gpu en minuscula)
+    const gpuData = data.gpu || (data.Hardware && (data.Hardware.gpu || data.Hardware.GPU));
     if (gpuData && Array.isArray(gpuData) && gpuData.length > 0) {
         const gpu = gpuData[0];
         const gpuText = gpu.VRAM_GB > 0
@@ -92,22 +100,22 @@ function updateSystemInfoCard(data) {
         document.getElementById('gpu-info').textContent = gpuText;
     }
 
-    // RAM
-    const ramData = data.ram || (data.Hardware && data.Hardware.RAM);
+    // RAM (backend devuelve Hardware.ram en minuscula)
+    const ramData = data.ram || (data.Hardware && (data.Hardware.ram || data.Hardware.RAM));
     if (ramData && ramData.TotalGB !== undefined) {
         const usedText = ramData.UsedPercent !== undefined ? ` (${ramData.UsedPercent}% usado)` : '';
         document.getElementById('ram-info').textContent = `${ramData.TotalGB} GB${usedText}`;
     }
 
-    // CPU
-    const cpuData = data.cpu || (data.Hardware && data.Hardware.CPU);
+    // CPU (backend devuelve Hardware.cpu en minuscula)
+    const cpuData = data.cpu || (data.Hardware && (data.Hardware.cpu || data.Hardware.CPU));
     if (cpuData && cpuData.Name) {
         const coresText = cpuData.Cores ? ` (${cpuData.Cores}C/${cpuData.Threads}T)` : '';
         document.getElementById('cpu-info').textContent = cpuData.Name + coresText;
     }
 
     // Sistema Operativo
-    const osData = data.os || (data.Hardware && data.Hardware.os);
+    const osData = data.os || (data.Hardware && (data.Hardware.os || data.Hardware.OS));
     if (osData && osData.Name) {
         const archText = osData.Architecture ? ` ${osData.Architecture}` : '';
         document.getElementById('os-info').textContent = osData.Name + archText;
@@ -141,8 +149,8 @@ function updateSystemInfoCard(data) {
         }
     }
 
-    // Red
-    const netData = data.network;
+    // Red (backend devuelve Network con mayuscula)
+    const netData = data.network || data.Network;
     if (netData) {
         const netEl = document.getElementById('network-status');
         netEl.textContent = `${netData.Status} (${netData.Ping}ms)`;
